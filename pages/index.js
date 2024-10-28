@@ -158,47 +158,54 @@ const StockChart = () => {
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: getChartHeight(),
-      layout: { background: { type: 'solid', color: '#f8fafc' }, textColor: '#1f2937' },
-      crosshair: { mode: CrosshairMode.Normal },
-      timeScale: { 
-        timeVisible: true, 
-        borderColor: '#cbd5e1',
-        rightOffset: 5, // Added right offset
-        minBarSpacing: 5, // Added minimum bar spacing
-      },
-      rightPriceScale: {
-        autoScale: true, // Ensure autoscaling
-      },
-    });
+    const chart = createChart(chartContainerRef.current, chartOptions);
 
-    const candleSeries = chart.addCandlestickSeries({
+    // Create main price chart
+    const mainSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
       borderUpColor: '#26a69a',
       borderDownColor: '#ef5350',
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
+      priceScaleId: 'right',
     });
-    candleSeries.setData(chartData);
 
+    // Set up the main chart data
+    mainSeries.setData(chartData);
+
+    // Create volume series in a separate pane
     const volumeSeries = chart.addHistogramSeries({
-      color: '#26a69a', // Default color
-      priceFormat: { type: 'volume' },
-      priceScaleId: '', // Empty string ensures it creates a new pane
-      scaleMargins: { top: 0.8, bottom: 0 },
+      color: '#26a69a',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume',
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
     });
 
-    volumeSeries.setData(
-      chartData.map((d) => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? '#26a69a' : '#ef5350',
-      }))
-    );
+    // Configure the volume pane
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.7, // Start the volume chart 70% down from the top
+        bottom: 0, // Extend to the bottom
+      },
+      height: 100, // Fixed height for volume pane
+    });
 
+    // Set volume data with colors matching the candlesticks
+    const volumeData = chartData.map(d => ({
+      time: d.time,
+      value: d.volume,
+      color: d.close >= d.open ? '#26a69a80' : '#ef535080',
+    }));
+
+    volumeSeries.setData(volumeData);
+
+    // Sync crosshair movement
     chart.timeScale().fitContent();
 
     chartInstanceRef.current = chart;
