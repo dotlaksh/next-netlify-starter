@@ -21,7 +21,7 @@ export default function Home() {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('3M');
+  const [selectedPeriod, setSelectedPeriod] = useState('1y');
   const [currentStats, setCurrentStats] = useState(null);
   
   const chartContainerRef = useRef(null);
