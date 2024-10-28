@@ -7,9 +7,6 @@ import axios from 'axios';
 
 const TIME_PERIODS = [
   { label: 'YTD', days: 365, auto: 'ytd' },
-  { label: '1M', days: 30 },
-  { label: '3M', days: 90 },
-  { label: '6M', days: 180 },
   { label: '1Y', days: 365 },
   { label: '2Y', days: 730 },
   { label: '5Y', days: 1825 },
@@ -250,7 +247,7 @@ const chart = createChart(chartContainerRef.current, {
         <div className="flex justify-center items-center py-2 bg-white shadow-sm">
           <span className="text-lg font-bold mr-4">{currentStock.name}</span>
           <span className="text-lg font-semibold">
-            ${currentStock.price.toFixed(2)} ({currentStock.change.toFixed(2)}%)
+            {currentStock.price.toFixed(2)} ({currentStock.change.toFixed(2)}%)
           </span>
         </div>
       )}
