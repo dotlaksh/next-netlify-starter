@@ -27,6 +27,15 @@ const StockChart = () => {
   const chartInstanceRef = useRef(null);
   const resizeObserverRef = useRef(null);
 
+  // Calculate chart height based on window height
+  const getChartHeight = () => {
+    if (typeof window !== 'undefined') {
+      // Subtract header (64px) and footer (64px) heights
+      return window.innerHeight - 128;
+    }
+    return 600; // Default fallback height
+  };
+
   useEffect(() => {
     const loadCSV = async () => {
       try {
@@ -53,7 +62,6 @@ const StockChart = () => {
     
     loadCSV();
 
-    // Cleanup
     return () => {
       if (chartInstanceRef.current) {
         chartInstanceRef.current.remove();
@@ -121,7 +129,7 @@ const StockChart = () => {
 
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: 400, // Fixed height
+        height: getChartHeight(),
         layout: {
           background: { type: 'solid', color: '#ffffff' },
           textColor: '#333'
@@ -141,21 +149,37 @@ const StockChart = () => {
         },
       });
 
+      // Add price chart
       const candleSeries = chart.addCandlestickSeries({
         upColor: '#26a69a',
         downColor: '#ef5350',
         borderVisible: false,
         wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350'
+        wickDownColor: '#ef5350',
+        priceScaleId: 'right',
       });
 
+      // Add volume chart in separate pane
       const volumeSeries = chart.addHistogramSeries({
         color: '#26a69a',
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
-        scaleMargins: { top: 0.8, bottom: 0 }
+        scaleMargins: {
+          top: 0.8, // This creates a separate pane for volume
+          bottom: 0,
+        },
       });
 
+      // Set up price scale for volume
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: {
+          top: 0.8, // Keep volume chart in lower 20% of the space
+          bottom: 0,
+        },
+        drawTicks: false,
+      });
+
+      // Set the data
       candleSeries.setData(chartData);
       volumeSeries.setData(
         chartData.map(item => ({
@@ -168,20 +192,37 @@ const StockChart = () => {
       chart.timeScale().fitContent();
       chartInstanceRef.current = chart;
 
-      // Set up ResizeObserver for responsive chart
+      // Handle window resizing
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect();
       }
 
       resizeObserverRef.current = new ResizeObserver(entries => {
         const { width } = entries[0].contentRect;
-        chart.applyOptions({ width });
+        chart.applyOptions({ 
+          width,
+          height: getChartHeight()
+        });
+        chart.timeScale().fitContent();
       });
 
       resizeObserverRef.current.observe(chartContainerRef.current);
     };
 
     initChart();
+
+    // Add window resize handler
+    const handleWindowResize = () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.applyOptions({ 
+          height: getChartHeight()
+        });
+        chartInstanceRef.current.timeScale().fitContent();
+      }
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
   }, [chartData]);
 
   const handlePrevious = () => {
@@ -199,10 +240,25 @@ const StockChart = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      <header className="bg-blue-600 text-white px-4 py-2 shadow-lg">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold">Stock Charts</h1>
+    <div className="flex flex-col h-screen">
+      {/* Fixed Header */}
+      <header className="fixed top-0 left-0 right-0 h-16 bg-blue-600 text-white px-4 z-50">
+        <div className="h-full max-w-screen-2xl mx-auto flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-xl font-bold">Stock Charts</h1>
+            <h2 className="text-lg">{stockSymbols[currentIndex]}</h2>
+            {currentStats && (
+              <div className="hidden md:flex items-center space-x-4 text-sm">
+                <span className="font-bold">₹{currentStats.current}</span>
+                <span className={currentStats.change >= 0 ? 'text-green-300' : 'text-red-300'}>
+                  {currentStats.change}%
+                </span>
+                <span>H: ₹{currentStats.high}</span>
+                <span>L: ₹{currentStats.low}</span>
+                <span>Vol: {currentStats.volume}</span>
+              </div>
+            )}
+          </div>
           <Select 
             value={selectedPeriod} 
             onValueChange={(value) => {
@@ -224,53 +280,39 @@ const StockChart = () => {
         </div>
       </header>
 
-      <main className="flex-grow p-4">
-        <Card className="w-full">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{stockSymbols[currentIndex]}</CardTitle>
-            {currentStats && (
-              <div className="flex items-center space-x-4 text-sm">
-                <span className="font-bold">₹{currentStats.current}</span>
-                <span className={currentStats.change >= 0 ? 'text-green-500' : 'text-red-500'}>
-                  {currentStats.change}%
-                </span>
-                <span>H: ₹{currentStats.high}</span>
-                <span>L: ₹{currentStats.low}</span>
-                <span>Vol: {currentStats.volume}</span>
-              </div>
-            )}
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center h-96">Loading...</div>
-            ) : error ? (
-              <div className="text-red-500 text-center h-96 flex items-center justify-center">{error}</div>
-            ) : (
-              <div ref={chartContainerRef} className="w-full h-96" />
-            )}
-          </CardContent>
-        </Card>
+      {/* Main Content */}
+      <main className="flex-grow mt-16 mb-16">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">Loading...</div>
+        ) : error ? (
+          <div className="text-red-500 text-center h-full flex items-center justify-center">{error}</div>
+        ) : (
+          <div ref={chartContainerRef} className="w-full h-full" />
+        )}
       </main>
 
-      <nav className="bg-white shadow-md p-4 flex justify-between items-center">
-        <Button 
-          variant="outline"
-          disabled={currentIndex === 0} 
-          onClick={handlePrevious}
-        >
-          Previous
-        </Button>
-        <div>
-          {currentIndex + 1} / {stockSymbols.length}
+      {/* Fixed Footer */}
+      <footer className="fixed bottom-0 left-0 right-0 h-16 bg-white shadow-md z-50">
+        <div className="h-full max-w-screen-2xl mx-auto px-4 flex justify-between items-center">
+          <Button 
+            variant="outline"
+            disabled={currentIndex === 0} 
+            onClick={handlePrevious}
+          >
+            Previous
+          </Button>
+          <div>
+            {currentIndex + 1} / {stockSymbols.length}
+          </div>
+          <Button 
+            variant="outline"
+            disabled={currentIndex === stockSymbols.length - 1} 
+            onClick={handleNext}
+          >
+            Next
+          </Button>
         </div>
-        <Button 
-          variant="outline"
-          disabled={currentIndex === stockSymbols.length - 1} 
-          onClick={handleNext}
-        >
-          Next
-        </Button>
-      </nav>
+      </footer>
     </div>
   );
 };
