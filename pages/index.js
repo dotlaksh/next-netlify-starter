@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createChart, CrosshairMode } from 'lightweight-charts';
+import { createChart, ColorType } from 'lightweight-charts';
 import Papa from 'papaparse';
 import axios from 'axios';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -25,16 +25,12 @@ const StockChart = () => {
   
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
-  const resizeObserverRef = useRef(null);
 
-  // Calculate chart height based on window height
-  const getChartHeight = () => {
-    if (typeof window !== 'undefined') {
-      // Subtract header (64px) and footer (64px) heights
-      return window.innerHeight - 128;
-    }
-    return 600; // Default fallback height
-  };
+  // Debug logging
+  useEffect(() => {
+    console.log('Chart Data:', chartData);
+    console.log('Container Ref:', chartContainerRef.current);
+  }, [chartData]);
 
   useEffect(() => {
     const loadCSV = async () => {
@@ -45,16 +41,19 @@ const StockChart = () => {
           header: true,
           skipEmptyLines: true,
           complete: (results) => {
+            console.log('CSV Data:', results.data);
             const symbols = results.data.map(row => row.Symbol).filter(Boolean);
             setStockSymbols(symbols);
             if (symbols.length) fetchStockData(symbols[0], selectedPeriod);
           },
           error: (error) => {
+            console.error('CSV Parse Error:', error);
             setError(`Failed to parse CSV file: ${error.message}`);
             setLoading(false);
           }
         });
       } catch (error) {
+        console.error('CSV Load Error:', error);
         setError(`Failed to load CSV file: ${error.message}`);
         setLoading(false);
       }
@@ -65,9 +64,6 @@ const StockChart = () => {
     return () => {
       if (chartInstanceRef.current) {
         chartInstanceRef.current.remove();
-      }
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
       }
     };
   }, []);
@@ -82,20 +78,26 @@ const StockChart = () => {
       const days = TIME_PERIODS.find(t => t.label === period)?.days || 90;
       startDate.setDate(startDate.getDate() - days);
 
+      // Debug log
+      console.log('Fetching data for:', symbol, startDate, endDate);
+
       const response = await axios.get('/api/stockData', {
         params: { symbol, startDate: startDate.toISOString(), endDate: endDate.toISOString() }
       });
 
+      console.log('API Response:', response.data);
+
       if (response.data?.length) {
         const formattedData = response.data.map(item => ({
-          time: new Date(item.time).getTime() / 1000,
-          open: parseFloat(item.open),
-          high: parseFloat(item.high),
-          low: parseFloat(item.low),
-          close: parseFloat(item.close),
-          volume: parseFloat(item.volume)
+          time: typeof item.time === 'string' ? new Date(item.time).getTime() / 1000 : item.time,
+          open: Number(item.open),
+          high: Number(item.high),
+          low: Number(item.low),
+          close: Number(item.close),
+          volume: Number(item.volume)
         }));
         
+        console.log('Formatted Data:', formattedData);
         setChartData(formattedData);
         
         const lastItem = formattedData[formattedData.length - 1];
@@ -110,9 +112,11 @@ const StockChart = () => {
           volume: (lastItem.volume / 1000000).toFixed(2) + 'M'
         });
       } else {
+        console.error('No data in response');
         setError('No data available for this symbol');
       }
     } catch (error) {
+      console.error('API Error:', error);
       setError(error.response?.data?.details || 'Failed to fetch stock data');
     } finally {
       setLoading(false);
@@ -120,111 +124,103 @@ const StockChart = () => {
   }, []);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !chartData.length) return;
+    if (!chartContainerRef.current || !chartData.length) {
+      console.log('Missing requirements:', {
+        container: !!chartContainerRef.current,
+        dataLength: chartData.length
+      });
+      return;
+    }
 
     const initChart = () => {
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.remove();
-      }
+      try {
+        if (chartInstanceRef.current) {
+          chartInstanceRef.current.remove();
+        }
 
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        height: getChartHeight(),
-        layout: {
-          background: { type: 'solid', color: '#ffffff' },
-          textColor: '#333'
-        },
-        grid: {
-          vertLines: { color: '#f0f0f0' },
-          horzLines: { color: '#f0f0f0' }
-        },
-        crosshair: {
-          mode: CrosshairMode.Normal
-        },
-        timeScale: {
-          timeVisible: true,
-          secondsVisible: false,
-          rightOffset: 5,
-          minBarSpacing: 5,
-        },
-      });
+        // Get container dimensions
+        const container = chartContainerRef.current;
+        const containerHeight = window.innerHeight - 128; // Subtract header and footer heights
 
-      // Add price chart
-      const candleSeries = chart.addCandlestickSeries({
-        upColor: '#26a69a',
-        downColor: '#ef5350',
-        borderVisible: false,
-        wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350',
-        priceScaleId: 'right',
-      });
-
-      // Add volume chart in separate pane
-      const volumeSeries = chart.addHistogramSeries({
-        color: '#26a69a',
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'volume',
-        scaleMargins: {
-          top: 0.8, // This creates a separate pane for volume
-          bottom: 0,
-        },
-      });
-
-      // Set up price scale for volume
-      chart.priceScale('volume').applyOptions({
-        scaleMargins: {
-          top: 0.8, // Keep volume chart in lower 20% of the space
-          bottom: 0,
-        },
-        drawTicks: false,
-      });
-
-      // Set the data
-      candleSeries.setData(chartData);
-      volumeSeries.setData(
-        chartData.map(item => ({
-          time: item.time,
-          value: item.volume,
-          color: item.close > item.open ? '#26a69a' : '#ef5350'
-        }))
-      );
-
-      chart.timeScale().fitContent();
-      chartInstanceRef.current = chart;
-
-      // Handle window resizing
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-      }
-
-      resizeObserverRef.current = new ResizeObserver(entries => {
-        const { width } = entries[0].contentRect;
-        chart.applyOptions({ 
-          width,
-          height: getChartHeight()
+        console.log('Container dimensions:', {
+          width: container.clientWidth,
+          height: containerHeight
         });
-        chart.timeScale().fitContent();
-      });
 
-      resizeObserverRef.current.observe(chartContainerRef.current);
+        const chart = createChart(container, {
+          width: container.clientWidth,
+          height: containerHeight,
+          layout: {
+            background: { type: ColorType.Solid, color: '#ffffff' },
+            textColor: '#333333',
+          },
+          grid: {
+            vertLines: { color: '#f0f0f0' },
+            horzLines: { color: '#f0f0f0' },
+          },
+        });
+
+        // Add price series
+        const mainSeries = chart.addCandlestickSeries({
+          upColor: '#26a69a',
+          downColor: '#ef5350',
+          borderVisible: false,
+          wickUpColor: '#26a69a',
+          wickDownColor: '#ef5350',
+        });
+
+        // Add volume series
+        const volumeSeries = chart.addHistogramSeries({
+          color: '#26a69a',
+          priceFormat: {
+            type: 'volume',
+          },
+          priceScaleId: 'volume',
+          scaleMargins: {
+            top: 0.8,
+            bottom: 0,
+          },
+        });
+
+        // Set the data
+        console.log('Setting chart data:', chartData);
+        mainSeries.setData(chartData);
+        volumeSeries.setData(
+          chartData.map(item => ({
+            time: item.time,
+            value: item.volume,
+            color: item.close > item.open ? '#26a69a' : '#ef5350'
+          }))
+        );
+
+        // Fit the content
+        chart.timeScale().fitContent();
+
+        // Store the chart instance
+        chartInstanceRef.current = chart;
+
+        // Handle resize
+        const handleResize = () => {
+          const newHeight = window.innerHeight - 128;
+          chart.applyOptions({
+            width: container.clientWidth,
+            height: newHeight
+          });
+          chart.timeScale().fitContent();
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      } catch (error) {
+        console.error('Chart initialization error:', error);
+        setError('Failed to initialize chart');
+      }
     };
 
     initChart();
-
-    // Add window resize handler
-    const handleWindowResize = () => {
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.applyOptions({ 
-          height: getChartHeight()
-        });
-        chartInstanceRef.current.timeScale().fitContent();
-      }
-    };
-
-    window.addEventListener('resize', handleWindowResize);
-    return () => window.removeEventListener('resize', handleWindowResize);
   }, [chartData]);
 
+  // Navigation handlers
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
@@ -281,13 +277,17 @@ const StockChart = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow mt-16 mb-16">
+      <main className="flex-grow pt-16 pb-16">
         {loading ? (
           <div className="flex items-center justify-center h-full">Loading...</div>
         ) : error ? (
           <div className="text-red-500 text-center h-full flex items-center justify-center">{error}</div>
         ) : (
-          <div ref={chartContainerRef} className="w-full h-full" />
+          <div 
+            ref={chartContainerRef} 
+            className="w-full h-full"
+            style={{ minHeight: '200px' }}
+          />
         )}
       </main>
 
