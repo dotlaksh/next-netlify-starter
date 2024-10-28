@@ -23,54 +23,42 @@ const StockChart = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('3M');
-  const [currentStats, setCurrentStats] = useState(null);
 
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
   const resizeObserverRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
-    return window.innerWidth < 768 ? 300 : chartContainerRef.current?.clientHeight || 600;
+    return window.innerWidth < 768 ? 300 : 500; // Adjusted height to fit mobile better
   }, []);
 
-  // Load CSV data
-  useEffect(() => {
-    const loadCSV = async () => {
-      try {
-        const response = await fetch('/nifty50.csv');
-        const text = await response.text();
-        Papa.parse(text, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            const symbols = results.data.map((row) => row.Symbol).filter(Boolean);
-            setStockSymbols(symbols);
-            if (symbols.length) fetchStockData(symbols[0], selectedPeriod);
-          },
-          error: (err) => {
-            setError(`Failed to parse CSV: ${err.message}`);
-            setLoading(false);
-          },
-        });
-      } catch (err) {
-        setError(`Failed to load CSV: ${err.message}`);
-        setLoading(false);
-      }
-    };
-
-    loadCSV();
-    return () => {
-      chartInstanceRef.current?.remove();
-      resizeObserverRef.current?.disconnect();
-    };
-  }, [selectedPeriod]);
+  const loadCSV = async () => {
+    try {
+      const response = await fetch('/nifty50.csv');
+      const text = await response.text();
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          const symbols = results.data.map((row) => row.Symbol).filter(Boolean);
+          setStockSymbols(symbols);
+          if (symbols.length) fetchStockData(symbols[0], selectedPeriod);
+        },
+        error: (err) => setError(`Failed to parse CSV: ${err.message}`),
+      });
+    } catch (err) {
+      setError(`Failed to load CSV: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchStockData = useCallback(async (symbol, period) => {
     setLoading(true);
     try {
       const endDate = new Date();
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - (TIME_PERIODS.find((t) => t.label === period)?.days || 90));
+      startDate.setDate(endDate.getDate() - (TIME_PERIODS.find((t) => t.label === period)?.days || 90));
 
       const { data } = await axios.get('/api/stockData', {
         params: { symbol, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
@@ -86,18 +74,6 @@ const StockChart = () => {
       }));
 
       setChartData(formattedData);
-
-      const last = formattedData[formattedData.length - 1];
-      const prev = formattedData[formattedData.length - 2];
-      const change = (((last.close - prev.close) / prev.close) * 100).toFixed(2);
-
-      setCurrentStats({
-        current: last.close.toFixed(2),
-        change,
-        high: last.high.toFixed(2),
-        low: last.low.toFixed(2),
-        volume: (last.volume / 1e6).toFixed(2) + 'M',
-      });
     } catch (err) {
       setError('Failed to fetch stock data');
     } finally {
@@ -106,18 +82,34 @@ const StockChart = () => {
   }, []);
 
   useEffect(() => {
+    loadCSV();
+    return () => {
+      chartInstanceRef.current?.remove();
+      resizeObserverRef.current?.disconnect();
+    };
+  }, [selectedPeriod]);
+
+  useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: getChartHeight(),
-      layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#000' },
+      layout: { background: { type: 'solid', color: '#fff' }, textColor: '#000' },
       crosshair: { mode: CrosshairMode.Normal },
-      timeScale: { timeVisible: true },
+      timeScale: { timeVisible: true, borderColor: '#D1D4DC' },
     });
 
     const candleSeries = chart.addCandlestickSeries();
     candleSeries.setData(chartData);
+
+    const volumeSeries = chart.addHistogramSeries({
+      color: '#26a69a',
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+      scaleMargins: { top: 0.8, bottom: 0 },
+    });
+    volumeSeries.setData(chartData.map((d) => ({ time: d.time, value: d.volume })));
 
     chartInstanceRef.current = chart;
     resizeObserverRef.current = new ResizeObserver(() => chart.applyOptions({ height: getChartHeight() }));
