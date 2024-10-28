@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import Papa from 'papaparse';
 import axios from 'axios';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
+import { Button } from '@components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@components/ui/select';
 
 // Time period options
 const TIME_PERIODS = [
@@ -21,7 +21,7 @@ export default function Home() {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('1y');
+  const [selectedPeriod, setSelectedPeriod] = useState('3M');
   const [currentStats, setCurrentStats] = useState(null);
   
   const chartContainerRef = useRef(null);
@@ -141,6 +141,8 @@ export default function Home() {
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 5,
+        minBarSpacing: 5,
       },
     });
 
@@ -153,7 +155,7 @@ export default function Home() {
       wickDownColor: '#ef5350',
     });
 
-    // Volume series
+    // Volume series in a separate pane
     volumeSeriesRef.current = chart.addHistogramSeries({
       color: '#26a69a',
       priceFormat: { type: 'volume' },
@@ -209,7 +211,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-blue-600 text-white px-4 py-3 shadow-lg">
+      <header className="bg-blue-600 text-white px-4 py-2 shadow-lg">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold">NSE Stock Charts</h1>
           <div className="flex items-center space-x-4">
@@ -236,7 +238,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow p-4">
+      <main className="flex-grow p-2">
         <Card className="w-full">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{stockSymbols[currentIndex]}</CardTitle>
@@ -254,27 +256,24 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center h-[600px]">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
+              <div className="text-center">Loading...</div>
             ) : error ? (
-              <div className="text-red-500">{error}</div>
+              <div className="text-red-500 text-center">{error}</div>
             ) : (
-              <div ref={chartContainerRef} className="h-full" />
+              <div ref={chartContainerRef} className="h-[400px]"></div>
             )}
           </CardContent>
         </Card>
-
-        {/* Pagination */}
-        <div className="flex justify-between mt-4">
-          <Button onClick={handlePrevious} disabled={currentIndex === 0}>
-            Previous
-          </Button>
-          <Button onClick={handleNext} disabled={currentIndex === stockSymbols.length - 1}>
-            Next
-          </Button>
-        </div>
       </main>
+
+      {/* Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-md p-4 flex justify-between">
+        <Button disabled={currentIndex === 0} onClick={handlePrevious}>Previous</Button>
+        <div>
+          {currentIndex + 1} / {stockSymbols.length}
+        </div>
+        <Button disabled={currentIndex === stockSymbols.length - 1} onClick={handleNext}>Next</Button>
+      </nav>
     </div>
   );
 }
