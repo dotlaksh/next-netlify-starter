@@ -158,8 +158,22 @@ const StockChart = () => {
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
-    const chart = createChart(chartContainerRef.current, chartOptions);
-
+const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: getChartHeight(),
+      layout: { background: { type: 'solid', color: '#f8fafc' }, textColor: '#1f2937' },
+      crosshair: { mode: CrosshairMode.Normal },
+      timeScale: { 
+        timeVisible: true, 
+        borderColor: '#cbd5e1',
+        rightOffset: 5, // Added right offset
+        minBarSpacing: 5, // Added minimum bar spacing
+      },
+      rightPriceScale: {
+        autoScale: true, // Ensure autoscaling
+      },
+    });
+    
     // Create main price chart
     const mainSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
