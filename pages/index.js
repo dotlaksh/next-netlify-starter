@@ -102,7 +102,15 @@ const StockChart = () => {
       height: getChartHeight(),
       layout: { background: { type: 'solid', color: '#f8fafc' }, textColor: '#1f2937' },
       crosshair: { mode: CrosshairMode.Normal },
-      timeScale: { timeVisible: true, borderColor: '#cbd5e1' },
+      timeScale: { 
+        timeVisible: true, 
+        borderColor: '#cbd5e1',
+        rightOffset: 5, // Added right offset
+        minBarSpacing: 5, // Added minimum bar spacing
+      },
+      rightPriceScale: {
+        autoScale: true, // Ensure autoscaling
+      },
     });
 
     const candleSeries = chart.addCandlestickSeries({
@@ -129,6 +137,9 @@ const StockChart = () => {
         color: d.close >= d.open ? '#26a69a' : '#ef5350',
       }))
     );
+
+    // Ensure the chart fits content properly
+    chart.timeScale().fitContent();
 
     chartInstanceRef.current = chart;
 
