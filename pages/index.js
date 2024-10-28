@@ -6,17 +6,20 @@ import Papa from 'papaparse';
 import axios from 'axios';
 
 const TIME_PERIODS = [
-  { label: '1W', days: 7 },
+  { label: 'YTD', days: 365, auto: 'ytd' },
   { label: '1M', days: 30 },
   { label: '3M', days: 90 },
   { label: '6M', days: 180 },
   { label: '1Y', days: 365 },
+  { label: '2Y', days: 730 },
+  { label: '5Y', days: 1825 },
+  { label: 'Max', days: 3650 }, // Approx. 10 years for max
 ];
 
 const INTERVALS = [
-  { label: 'Daily', value: 'daily' },
-  { label: 'Weekly', value: 'weekly' },
-  { label: 'Monthly', value: 'monthly' },
+  { label: 'Daily', value: 'daily', autoTimeframe: 'YTD' },
+  { label: 'Weekly', value: 'weekly', autoTimeframe: '2Y' },
+  { label: 'Monthly', value: 'monthly', autoTimeframe: '5Y' },
 ];
 
 const StockChart = () => {
@@ -25,7 +28,7 @@ const StockChart = () => {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('3M'); // Default value
+  const [selectedPeriod, setSelectedPeriod] = useState('YTD'); // Default value adjusted
   const [selectedInterval, setSelectedInterval] = useState('daily'); // Default interval
   const [currentStock, setCurrentStock] = useState(null); // Track current stock info
 
@@ -144,6 +147,14 @@ const StockChart = () => {
     }
   }, [selectedPeriod, selectedInterval, currentIndex]); // Update on period, interval, or index change
 
+  const handleIntervalChange = (newInterval) => {
+    const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
+    setSelectedInterval(newInterval);
+    if (autoTimeframe) {
+      setSelectedPeriod(autoTimeframe);
+    }
+  };
+
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
@@ -173,7 +184,6 @@ const StockChart = () => {
     });
     candleSeries.setData(chartData);
 
-    // Volume Series on a separate pane
     const volumeSeries = chart.addHistogramSeries({
       color: '#26a69a', // Default color
       priceFormat: { type: 'volume' },
@@ -181,7 +191,6 @@ const StockChart = () => {
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    // Sync volume color with candlesticks
     volumeSeries.setData(
       chartData.map((d) => ({
         time: d.time,
@@ -190,7 +199,6 @@ const StockChart = () => {
       }))
     );
 
-    // Ensure the chart fits content properly
     chart.timeScale().fitContent();
 
     chartInstanceRef.current = chart;
@@ -212,7 +220,6 @@ const StockChart = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="sticky top-0 bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
         <h1 className="text-lg font-semibold">Stock Charts</h1>
         <div className="flex items-center">
@@ -230,7 +237,7 @@ const StockChart = () => {
           <select
             className="bg-white text-gray-700 rounded px-2 py-1"
             value={selectedInterval}
-            onChange={(e) => setSelectedInterval(e.target.value)}
+            onChange={(e) => handleIntervalChange(e.target.value)}
           >
             {INTERVALS.map((interval) => (
               <option key={interval.value} value={interval.value}>
@@ -241,7 +248,6 @@ const StockChart = () => {
         </div>
       </header>
 
-      {/* Stock Info */}
       {currentStock && (
         <div className="flex justify-center items-center py-2 bg-white shadow-sm">
           <span className="text-lg font-bold mr-4">{currentStock.name}</span>
@@ -251,7 +257,6 @@ const StockChart = () => {
         </div>
       )}
 
-      {/* Chart */}
       <main className="flex-grow flex items-center justify-center p-4">
         {loading ? (
           <div className="text-center">Loading...</div>
@@ -262,7 +267,6 @@ const StockChart = () => {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="sticky bottom-0 bg-white py-4 px-6 flex justify-between items-center border-t">
         <button onClick={handlePrevious} disabled={currentIndex === 0} className="text-blue-600">
           Previous
