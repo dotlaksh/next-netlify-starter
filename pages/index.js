@@ -1,9 +1,10 @@
-'use client';
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
-import Papa from 'papaparse';
-import axios from 'axios';
+import nifty50Data from './data/nifty50.json';
+import niftyNext50Data from './data/niftyNext50.json';
+import midcap150Data from './data/midcap150.json';
+import smallcap250Data from './data/smallcap250.json';
+import microCap250Data from './data/microCap250.json';
 
 const TIME_PERIODS = [
   { label: 'YTD', days: 365, auto: 'ytd' },
@@ -20,7 +21,13 @@ const INTERVALS = [
 ];
 
 const StockChart = () => {
-  const [stockSymbols, setStockSymbols] = useState([]);
+  const [stockData, setStockData] = useState([
+    { label: 'Nifty 50', data: nifty50Data },
+    { label: 'Nifty Next 50', data: niftyNext50Data },
+    { label: 'Midcap 150', data: midcap150Data },
+    { label: 'Smallcap 250', data: smallcap250Data },
+    { label: 'MicroCap 250', data: microCap250Data },
+  ]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,26 +43,42 @@ const StockChart = () => {
     return window.innerWidth < 768 ? 400 : 600; // Increased height
   }, []);
 
-  const loadCSV = async () => {
+  const fetchStockData = useCallback(async (symbol, period, interval) => {
+    setLoading(true);
     try {
-      const response = await fetch('/nifty50.csv');
-      const text = await response.text();
-      Papa.parse(text, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          const symbols = results.data.map((row) => row.Symbol).filter(Boolean);
-          setStockSymbols(symbols);
-          if (symbols.length) fetchStockData(symbols[0], selectedPeriod, selectedInterval);
-        },
-        error: (err) => setError(`Failed to parse CSV: ${err.message}`),
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - (TIME_PERIODS.find((t) => t.label === period)?.days || 90));
+
+      const formattedData = stockData[currentIndex].data.map((item) => ({
+        time: new Date(item.date).getTime() / 1000,
+        open: parseFloat(item.open),
+        high: parseFloat(item.high),
+        low: parseFloat(item.low),
+        close: parseFloat(item.close),
+        volume: parseFloat(item.volume),
+      }));
+
+      const adjustedData = aggregateData(formattedData, interval);
+
+      setChartData(adjustedData);
+      setCurrentStock({
+        name: symbol,
+        price: adjustedData[adjustedData.length - 1]?.close,
+        change: ((adjustedData[adjustedData.length - 1]?.close - adjustedData[0]?.open) / adjustedData[0]?.open) * 100,
       });
     } catch (err) {
-      setError(`Failed to load CSV: ${err.message}`);
+      setError('Failed to fetch stock data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [stockData, currentIndex]);
+
+  useEffect(() => {
+    if (stockData.length > 0) {
+      fetchStockData(stockData[currentIndex].data[0].symbol, selectedPeriod, selectedInterval);
+    }
+  }, [selectedPeriod, selectedInterval, currentIndex, fetchStockData]);
 
   const aggregateData = (data, interval) => {
     if (interval === 'daily') return data;
@@ -98,52 +121,6 @@ const StockChart = () => {
     return aggregatedData;
   };
 
-  const fetchStockData = useCallback(async (symbol, period, interval) => {
-    setLoading(true);
-    try {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(endDate.getDate() - (TIME_PERIODS.find((t) => t.label === period)?.days || 90));
-
-      const { data } = await axios.get('/api/stockData', {
-        params: { symbol, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
-      });
-
-      const formattedData = data.map((item) => ({
-        time: new Date(item.time).getTime() / 1000,
-        open: parseFloat(item.open),
-        high: parseFloat(item.high),
-        low: parseFloat(item.low),
-        close: parseFloat(item.close),
-        volume: parseFloat(item.volume),
-      }));
-
-      const adjustedData = aggregateData(formattedData, interval);
-
-      setChartData(adjustedData);
-      setCurrentStock({
-        name: symbol,
-        price: adjustedData[adjustedData.length - 1]?.close,
-        change: ((adjustedData[adjustedData.length - 1]?.close - adjustedData[0]?.open) / adjustedData[0]?.open) * 100,
-      });
-    } catch (err) {
-      setError('Failed to fetch stock data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadCSV();
-    return () => chartInstanceRef.current?.remove();
-  }, []);
-
-  useEffect(() => {
-    if (stockSymbols.length > 0) {
-      fetchStockData(stockSymbols[currentIndex], selectedPeriod, selectedInterval);
-    }
-  }, [selectedPeriod, selectedInterval, currentIndex]); // Update on period, interval, or index change
-
   const handleIntervalChange = (newInterval) => {
     const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
     setSelectedInterval(newInterval);
@@ -152,16 +129,32 @@ const StockChart = () => {
     }
   };
 
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < stockData.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleDatasetChange = (index) => {
+    setCurrentIndex(index);
+  };
+
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
-const chart = createChart(chartContainerRef.current, {
+    const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: getChartHeight(),
       layout: { background: { type: 'solid', color: '#f8fafc' }, textColor: '#1f2937' },
       crosshair: { mode: CrosshairMode.Normal },
-      timeScale: { 
-        timeVisible: true, 
+      timeScale: {
+        timeVisible: true,
         borderColor: '#cbd5e1',
         rightOffset: 5, // Added right offset
         minBarSpacing: 5, // Added minimum bar spacing
@@ -170,7 +163,7 @@ const chart = createChart(chartContainerRef.current, {
         autoScale: true, // Ensure autoscaling
       },
     });
-    
+
     // Create main price chart
     const mainSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
@@ -208,7 +201,7 @@ const chart = createChart(chartContainerRef.current, {
     });
 
     // Set volume data with colors matching the candlesticks
-    const volumeData = chartData.map(d => ({
+    const volumeData = chartData.map((d) => ({
       time: d.time,
       value: d.volume,
       color: d.close >= d.open ? '#26a69a80' : '#ef535080',
@@ -224,23 +217,21 @@ const chart = createChart(chartContainerRef.current, {
     return () => chart.remove();
   }, [chartData, getChartHeight]);
 
-  const handlePrevious = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentIndex < stockSymbols.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    }
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <header className="sticky top-0 bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
         <h1 className="text-lg font-semibold">Stock Charts</h1>
-        
+        <select
+          className="bg-white text-gray-700 rounded px-2 py-1"
+          value={currentIndex}
+          onChange={(e) => handleDatasetChange(parseInt(e.target.value))}
+        >
+          {stockData.map((item, index) => (
+            <option key={index} value={index}>
+              {item.label}
+            </option>
+          ))}
+        </select>
       </header>
 
       {currentStock && (
@@ -267,9 +258,9 @@ const chart = createChart(chartContainerRef.current, {
           Previous
         </button>
         <span>
-          {currentIndex + 1} / {stockSymbols.length}
+          {currentIndex + 1} / {stockData.length}
         </span>
-        <button onClick={handleNext} disabled={currentIndex === stockSymbols.length - 1} className="text-blue-600">
+        <button onClick={handleNext} disabled={currentIndex === stockData.length - 1} className="text-blue-600">
           Next
         </button>
         <div className="flex items-center">
