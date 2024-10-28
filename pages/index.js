@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import Papa from 'papaparse';
 import axios from 'axios';
-import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
-import { Button } from '@components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@components/ui/select';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const TIME_PERIODS = [
   { label: '1W', days: 7 },
@@ -14,7 +14,7 @@ const TIME_PERIODS = [
   { label: '1Y', days: 365 },
 ];
 
-export default function Home() {
+const StockChart = () => {
   const [stockSymbols, setStockSymbols] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chartData, setChartData] = useState([]);
@@ -25,8 +25,7 @@ export default function Home() {
   
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
-  const candlestickSeriesRef = useRef(null);
-  const volumeSeriesRef = useRef(null);
+  const resizeObserverRef = useRef(null);
 
   useEffect(() => {
     const loadCSV = async () => {
@@ -53,6 +52,16 @@ export default function Home() {
     };
     
     loadCSV();
+
+    // Cleanup
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.remove();
+      }
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+    };
   }, []);
 
   const fetchStockData = useCallback(async (symbol, period) => {
@@ -71,7 +80,7 @@ export default function Home() {
 
       if (response.data?.length) {
         const formattedData = response.data.map(item => ({
-          time: item.time,
+          time: new Date(item.time).getTime() / 1000,
           open: parseFloat(item.open),
           high: parseFloat(item.high),
           low: parseFloat(item.low),
@@ -105,63 +114,74 @@ export default function Home() {
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.remove();
-    }
+    const initChart = () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.remove();
+      }
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight,
-      layout: { background: { color: '#ffffff' }, textColor: '#333' },
-      grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
-      crosshair: { mode: CrosshairMode.Normal },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-        rightOffset: 5,
-        minBarSpacing: 5,
-      },
-    });
-
-    candlestickSeriesRef.current = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-    });
-
-    volumeSeriesRef.current = chart.addHistogramSeries({
-      color: '#26a69a',
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
-      scaleMargins: { top: 0.8, bottom: 0 },
-    });
-
-    candlestickSeriesRef.current.setData(chartData);
-    volumeSeriesRef.current.setData(
-      chartData.map(item => ({
-        time: item.time,
-        value: item.volume,
-        color: item.close > item.open ? '#26a69a' : '#ef5350'
-      }))
-    );
-
-    chart.timeScale().fitContent();
-    chartInstanceRef.current = chart;
-
-    const handleResize = () => {
-      chart.applyOptions({
+      const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight,
+        height: 400, // Fixed height
+        layout: {
+          background: { type: 'solid', color: '#ffffff' },
+          textColor: '#333'
+        },
+        grid: {
+          vertLines: { color: '#f0f0f0' },
+          horzLines: { color: '#f0f0f0' }
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal
+        },
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          rightOffset: 5,
+          minBarSpacing: 5,
+        },
       });
+
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350'
+      });
+
+      const volumeSeries = chart.addHistogramSeries({
+        color: '#26a69a',
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+        scaleMargins: { top: 0.8, bottom: 0 }
+      });
+
+      candleSeries.setData(chartData);
+      volumeSeries.setData(
+        chartData.map(item => ({
+          time: item.time,
+          value: item.volume,
+          color: item.close > item.open ? '#26a69a' : '#ef5350'
+        }))
+      );
+
+      chart.timeScale().fitContent();
+      chartInstanceRef.current = chart;
+
+      // Set up ResizeObserver for responsive chart
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+
+      resizeObserverRef.current = new ResizeObserver(entries => {
+        const { width } = entries[0].contentRect;
+        chart.applyOptions({ width });
+      });
+
+      resizeObserverRef.current.observe(chartContainerRef.current);
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
-    };
+    initChart();
   }, [chartData]);
 
   const handlePrevious = () => {
@@ -179,9 +199,8 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Fixed Top Navigation Bar */}
-      <header className="fixed top-0 left-0 right-0 bg-blue-600 text-white px-4 py-2 shadow-lg z-10">
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <header className="bg-blue-600 text-white px-4 py-2 shadow-lg">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold">Stock Charts</h1>
           <Select 
@@ -205,9 +224,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-grow pt-16">
-        <Card className="w-full h-full">
+      <main className="flex-grow p-4">
+        <Card className="w-full">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{stockSymbols[currentIndex]}</CardTitle>
             {currentStats && (
@@ -224,24 +242,37 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="text-center">Loading...</div>
+              <div className="flex items-center justify-center h-96">Loading...</div>
             ) : error ? (
-              <div className="text-red-500 text-center">{error}</div>
+              <div className="text-red-500 text-center h-96 flex items-center justify-center">{error}</div>
             ) : (
-              <div ref={chartContainerRef} className="w-full h-full"></div>
+              <div ref={chartContainerRef} className="w-full h-96" />
             )}
           </CardContent>
         </Card>
       </main>
 
-      {/* Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-md p-4 flex justify-between z-10">
-        <Button disabled={currentIndex === 0} onClick={handlePrevious}>Previous</Button>
+      <nav className="bg-white shadow-md p-4 flex justify-between items-center">
+        <Button 
+          variant="outline"
+          disabled={currentIndex === 0} 
+          onClick={handlePrevious}
+        >
+          Previous
+        </Button>
         <div>
           {currentIndex + 1} / {stockSymbols.length}
         </div>
-        <Button disabled={currentIndex === stockSymbols.length - 1} onClick={handleNext}>Next</Button>
+        <Button 
+          variant="outline"
+          disabled={currentIndex === stockSymbols.length - 1} 
+          onClick={handleNext}
+        >
+          Next
+        </Button>
       </nav>
     </div>
   );
-}
+};
+
+export default StockChart;
