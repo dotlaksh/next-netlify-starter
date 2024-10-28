@@ -1,4 +1,3 @@
-// pages/index.js
 import { useState, useEffect, useRef } from 'react';
 import { createChart } from 'lightweight-charts';
 import Papa from 'papaparse';
@@ -13,6 +12,8 @@ export default function Home() {
   
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
+  const candlestickSeriesRef = useRef(null);
+  const volumeSeriesRef = useRef(null);
 
   useEffect(() => {
     const loadCSV = async () => {
@@ -29,8 +30,6 @@ export default function Home() {
           skipEmptyLines: true,
           transform: (value) => value.trim(),
           complete: (results) => {
-            console.log('CSV Parse Results:', results);
-            
             const validData = results.data.filter(row => 
               row.Symbol && row.Symbol.trim().length > 0
             );
@@ -42,21 +41,17 @@ export default function Home() {
             }
 
             const symbols = validData.map(row => row.Symbol.trim());
-            console.log('Extracted symbols:', symbols);
-
             setStockSymbols(symbols);
             if (symbols.length > 0) {
               fetchStockData(symbols[0]);
             }
           },
           error: (error) => {
-            console.error('CSV parsing error:', error);
             setError(`Failed to parse CSV file: ${error.message}`);
             setLoading(false);
           }
         });
       } catch (error) {
-        console.error('Error loading CSV:', error);
         setError(`Failed to load CSV file: ${error.message}`);
         setLoading(false);
       }
@@ -64,6 +59,99 @@ export default function Home() {
     
     loadCSV();
   }, []);
+
+  // Initialize chart only once
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const handleResize = () => {
+      if (chartInstanceRef.current && chartContainerRef.current) {
+        chartInstanceRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
+      }
+    };
+
+    const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: 500,
+      layout: {
+        background: { type: 'solid', color: '#ffffff' },
+        textColor: '#333',
+      },
+      grid: {
+        vertLines: { color: '#f0f0f0' },
+        horzLines: { color: '#f0f0f0' },
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          labelVisible: false,
+        },
+      },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        borderColor: '#D1D4DC',
+      },
+      rightPriceScale: {
+        borderColor: '#D1D4DC',
+      },
+    });
+
+    // Create and store series references
+    candlestickSeriesRef.current = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+
+    volumeSeriesRef.current = chart.addHistogramSeries({
+      color: '#26a69a',
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume',
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+    });
+
+    // Store chart instance
+    chartInstanceRef.current = chart;
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.remove();
+        chartInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update chart data separately
+  useEffect(() => {
+    if (chartData.length > 0 && candlestickSeriesRef.current && volumeSeriesRef.current) {
+      // Update candlestick series
+      candlestickSeriesRef.current.setData(chartData);
+
+      // Update volume series
+      const volumeData = chartData.map(item => ({
+        time: item.time,
+        value: item.volume,
+        color: item.close >= item.open ? '#26a69a' : '#ef5350'
+      }));
+      volumeSeriesRef.current.setData(volumeData);
+
+      // Fit content
+      chartInstanceRef.current?.timeScale().fitContent();
+    }
+  }, [chartData]);
 
   const fetchStockData = async (symbol) => {
     setLoading(true);
@@ -74,8 +162,6 @@ export default function Home() {
       const startDate = new Date();
       startDate.setMonth(startDate.getMonth() - 3);
 
-      console.log(`Fetching data for ${symbol}`);
-      
       const response = await axios.get('/api/stockData', {
         params: {
           symbol,
@@ -85,134 +171,16 @@ export default function Home() {
       });
 
       if (response.data && response.data.length > 0) {
-        const formattedData = response.data.map(item => ({
-          time: item.time,
-          open: parseFloat(item.open),
-          high: parseFloat(item.high),
-          low: parseFloat(item.low),
-          close: parseFloat(item.close),
-          volume: parseFloat(item.volume)
-        }));
-        
-        console.log('Formatted chart data:', formattedData[0]);
-        setChartData(formattedData);
+        setChartData(response.data);
       } else {
         setError('No data available for this symbol');
       }
     } catch (error) {
-      console.error('Error fetching stock data:', error.response?.data || error.message);
       setError(error.response?.data?.details || 'Failed to fetch stock data');
     } finally {
       setLoading(false);
     }
   };
-
-  // Chart initialization and update
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-
-    // Clean up previous chart instance
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.remove();
-      chartInstanceRef.current = null;
-    }
-
-    // Create new chart instance
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: 750,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      // Create two separate panes
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.3, // Leave space for volume pane
-        },
-      },
-    });
-
-    // Create candlestick series in the main pane
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-    });
-
-    // Create volume series in a separate pane
-    const volumeSeries = chart.addHistogramSeries({
-      color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: 'volume', // Unique ID for volume price scale
-      scaleMargins: {
-        top: 0.7, // Position volume pane at the bottom
-        bottom: 0.05,
-      },
-    });
-
-    // Configure volume price scale
-    chart.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.7, // Match the volume series margins
-        bottom: 0.05,
-      },
-      drawTicks: false, // Optional: hide ticks for cleaner look
-    });
-
-    // Set data if available
-    if (chartData.length > 0) {
-      candlestickSeries.setData(chartData);
-      
-      // Set volume data with colors based on price movement
-      volumeSeries.setData(
-        chartData.map(item => ({
-          time: item.time,
-          value: item.volume,
-          color: item.close > item.open ? '#26a69a' : '#ef5350'
-        }))
-      );
-
-      // Fit content
-      chart.timeScale().fitContent();
-    }
-
-    // Store chart instance for cleanup
-    chartInstanceRef.current = chart;
-
-    // Handle resizing
-    const handleResize = () => {
-      if (chartInstanceRef.current && chartContainerRef.current) {
-        chartInstanceRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.remove();
-        chartInstanceRef.current = null;
-      }
-    };
-  }, [chartData]);
 
   const handlePrevious = () => {
     if (currentIndex > 0) {
@@ -230,7 +198,6 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Top Navbar */}
       <nav className="bg-blue-600 text-white px-4 py-3 sm:px-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="text-sm sm:text-base opacity-75">
@@ -242,7 +209,6 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="flex-grow flex flex-col p-2 sm:p-4 md:p-6 overflow-hidden">
         <div className="bg-white rounded-lg shadow-lg flex-grow flex flex-col p-2 sm:p-4">
           {loading ? (
@@ -265,12 +231,11 @@ export default function Home() {
               </div>
             </div>
           ) : (
-            <div ref={chartContainerRef} className="flex-grow w-full h-[500px]" />
+            <div ref={chartContainerRef} className="flex-grow w-full" />
           )}
         </div>
       </main>
 
-      {/* Bottom Navigation */}
       <nav className="bg-white border-t shadow-lg px-4 py-3 sm:px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-4">
