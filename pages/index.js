@@ -14,18 +14,19 @@ const TIME_PERIODS = [
 ];
 
 const StockChart = () => {
-  const [stockSymbols, setStockSymbols] = useState([]);
+  const [stockSymbols, setStockSymbols] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [chartData, setChartData] = useState([]);
+  const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState('3M'); // Default value
+  const [currentStock, setCurrentStock] = useState<any>(null); // Track current stock info
 
-  const chartContainerRef = useRef(null);
-  const chartInstanceRef = useRef(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const chartInstanceRef = useRef<any>(null);
 
   const getChartHeight = useCallback(() => {
-    return window.innerWidth < 768 ? 320 : 500;
+    return window.innerWidth < 768 ? 400 : 600; // Increased height
   }, []);
 
   const loadCSV = async () => {
@@ -49,7 +50,7 @@ const StockChart = () => {
     }
   };
 
-  const fetchStockData = useCallback(async (symbol, period) => {
+  const fetchStockData = useCallback(async (symbol: string, period: string) => {
     setLoading(true);
     try {
       const endDate = new Date();
@@ -60,7 +61,7 @@ const StockChart = () => {
         params: { symbol, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       });
 
-      const formattedData = data.map((item) => ({
+      const formattedData = data.map((item: any) => ({
         time: new Date(item.time).getTime() / 1000,
         open: parseFloat(item.open),
         high: parseFloat(item.high),
@@ -70,6 +71,11 @@ const StockChart = () => {
       }));
 
       setChartData(formattedData);
+      setCurrentStock({
+        name: symbol,
+        price: formattedData[formattedData.length - 1]?.close,
+        change: ((formattedData[formattedData.length - 1]?.close - formattedData[0]?.open) / formattedData[0]?.open) * 100,
+      });
     } catch (err) {
       setError('Failed to fetch stock data');
     } finally {
@@ -99,16 +105,30 @@ const StockChart = () => {
       timeScale: { timeVisible: true, borderColor: '#cbd5e1' },
     });
 
-    const candleSeries = chart.addCandlestickSeries();
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderUpColor: '#26a69a',
+      borderDownColor: '#ef5350',
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
     candleSeries.setData(chartData);
 
     const volumeSeries = chart.addHistogramSeries({
-      color: '#34d399',
       priceFormat: { type: 'volume' },
-      priceScaleId: '',
+      priceScaleId: '', // Separate volume pane
       scaleMargins: { top: 0.8, bottom: 0 },
     });
-    volumeSeries.setData(chartData.map((d) => ({ time: d.time, value: d.volume })));
+
+    // Sync volume color with candlesticks
+    volumeSeries.setData(
+      chartData.map((d) => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? '#26a69a' : '#ef5350',
+      }))
+    );
 
     chartInstanceRef.current = chart;
 
@@ -144,6 +164,16 @@ const StockChart = () => {
           ))}
         </select>
       </header>
+
+      {/* Stock Info */}
+      {currentStock && (
+        <div className="flex justify-center items-center py-2 bg-white shadow-sm">
+          <span className="text-lg font-bold mr-4">{currentStock.name}</span>
+          <span className="text-lg font-semibold">
+            ${currentStock.price.toFixed(2)} ({currentStock.change.toFixed(2)}%)
+          </span>
+        </div>
+      )}
 
       {/* Chart */}
       <main className="flex-grow flex items-center justify-center p-4">
