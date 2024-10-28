@@ -19,7 +19,7 @@ const StockChart = () => {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('3M');
+  const [selectedPeriod, setSelectedPeriod] = useState('3M'); // Default value
 
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
@@ -80,7 +80,13 @@ const StockChart = () => {
   useEffect(() => {
     loadCSV();
     return () => chartInstanceRef.current?.remove();
-  }, [selectedPeriod]);
+  }, []);
+
+  useEffect(() => {
+    if (stockSymbols.length > 0) {
+      fetchStockData(stockSymbols[currentIndex], selectedPeriod);
+    }
+  }, [selectedPeriod, currentIndex]); // Update on period or index change
 
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
@@ -112,14 +118,12 @@ const StockChart = () => {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex((prev) => prev - 1);
-      fetchStockData(stockSymbols[currentIndex - 1], selectedPeriod);
     }
   };
 
   const handleNext = () => {
     if (currentIndex < stockSymbols.length - 1) {
       setCurrentIndex((prev) => prev + 1);
-      fetchStockData(stockSymbols[currentIndex + 1], selectedPeriod);
     }
   };
 
