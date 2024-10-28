@@ -29,7 +29,9 @@ const StockChart = () => {
   const chartInstanceRef = useRef(null);
   const resizeObserverRef = useRef(null);
 
-  const getChartHeight = useCallback(() => chartContainerRef.current?.clientHeight || 600, []);
+  const getChartHeight = useCallback(() => {
+    return window.innerWidth < 768 ? 300 : chartContainerRef.current?.clientHeight || 600;
+  }, []);
 
   // Load CSV data
   useEffect(() => {
@@ -164,13 +166,17 @@ const StockChart = () => {
         ) : error ? (
           <Alert variant="danger">{error}</Alert>
         ) : (
-          <div ref={chartContainerRef} className="w-100" />
+          <div
+            ref={chartContainerRef}
+            className="w-100 rounded border shadow p-3 bg-white"
+            style={{ height: getChartHeight() }}
+          />
         )}
       </main>
 
       {/* Bottom Navbar */}
       <footer className="navbar navbar-light bg-light">
-        <div className="container-fluid">
+        <div className="container-fluid d-flex justify-content-between">
           <Button onClick={handlePrevious} disabled={currentIndex === 0}>
             Previous
           </Button>
