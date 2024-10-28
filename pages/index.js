@@ -243,30 +243,7 @@ const chart = createChart(chartContainerRef.current, {
     <div className="flex flex-col min-h-screen bg-gray-50">
       <header className="sticky top-0 bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
         <h1 className="text-lg font-semibold">Stock Charts</h1>
-        <div className="flex items-center">
-          <select
-            className="bg-white text-gray-700 rounded px-2 py-1 mr-2"
-            value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value)}
-          >
-            {TIME_PERIODS.map((p) => (
-              <option key={p.label} value={p.label}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="bg-white text-gray-700 rounded px-2 py-1"
-            value={selectedInterval}
-            onChange={(e) => handleIntervalChange(e.target.value)}
-          >
-            {INTERVALS.map((interval) => (
-              <option key={interval.value} value={interval.value}>
-                {interval.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        
       </header>
 
       {currentStock && (
@@ -298,6 +275,30 @@ const chart = createChart(chartContainerRef.current, {
         <button onClick={handleNext} disabled={currentIndex === stockSymbols.length - 1} className="text-blue-600">
           Next
         </button>
+        <div className="flex items-center">
+          <select
+            className="bg-white text-gray-700 rounded px-2 py-1 mr-2"
+            value={selectedPeriod}
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+          >
+            {TIME_PERIODS.map((p) => (
+              <option key={p.label} value={p.label}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="bg-white text-gray-700 rounded px-2 py-1"
+            value={selectedInterval}
+            onChange={(e) => handleIntervalChange(e.target.value)}
+          >
+            {INTERVALS.map((interval) => (
+              <option key={interval.value} value={interval.value}>
+                {interval.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </footer>
     </div>
   );
