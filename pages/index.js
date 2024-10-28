@@ -1,12 +1,9 @@
+'use client';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import Papa from 'papaparse';
 import axios from 'axios';
-import Dropdown from 'react-bootstrap/Dropdown';
-import Button from 'react-bootstrap/Button';
-import Spinner from 'react-bootstrap/Spinner';
-import Alert from 'react-bootstrap/Alert';
-import 'bootstrap/dist/css/bootstrap.min.css';
 
 const TIME_PERIODS = [
   { label: '1W', days: 7 },
@@ -26,10 +23,9 @@ const StockChart = () => {
 
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
-  const resizeObserverRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
-    return window.innerWidth < 768 ? 300 : 500; // Adjusted height to fit mobile better
+    return window.innerWidth < 768 ? 320 : 500;
   }, []);
 
   const loadCSV = async () => {
@@ -83,10 +79,7 @@ const StockChart = () => {
 
   useEffect(() => {
     loadCSV();
-    return () => {
-      chartInstanceRef.current?.remove();
-      resizeObserverRef.current?.disconnect();
-    };
+    return () => chartInstanceRef.current?.remove();
   }, [selectedPeriod]);
 
   useEffect(() => {
@@ -95,16 +88,16 @@ const StockChart = () => {
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: getChartHeight(),
-      layout: { background: { type: 'solid', color: '#fff' }, textColor: '#000' },
+      layout: { background: { type: 'solid', color: '#f8fafc' }, textColor: '#1f2937' },
       crosshair: { mode: CrosshairMode.Normal },
-      timeScale: { timeVisible: true, borderColor: '#D1D4DC' },
+      timeScale: { timeVisible: true, borderColor: '#cbd5e1' },
     });
 
     const candleSeries = chart.addCandlestickSeries();
     candleSeries.setData(chartData);
 
     const volumeSeries = chart.addHistogramSeries({
-      color: '#26a69a',
+      color: '#34d399',
       priceFormat: { type: 'volume' },
       priceScaleId: '',
       scaleMargins: { top: 0.8, bottom: 0 },
@@ -112,8 +105,6 @@ const StockChart = () => {
     volumeSeries.setData(chartData.map((d) => ({ time: d.time, value: d.volume })));
 
     chartInstanceRef.current = chart;
-    resizeObserverRef.current = new ResizeObserver(() => chart.applyOptions({ height: getChartHeight() }));
-    resizeObserverRef.current.observe(chartContainerRef.current);
 
     return () => chart.remove();
   }, [chartData, getChartHeight]);
@@ -133,52 +124,45 @@ const StockChart = () => {
   };
 
   return (
-    <div className="d-flex flex-column vh-100">
-      {/* Top Navbar */}
-      <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div className="container-fluid">
-          <span className="navbar-brand">Stock Charts</span>
-          <Dropdown>
-            <Dropdown.Toggle variant="light">{selectedPeriod}</Dropdown.Toggle>
-            <Dropdown.Menu>
-              {TIME_PERIODS.map((p) => (
-                <Dropdown.Item key={p.label} onClick={() => setSelectedPeriod(p.label)}>
-                  {p.label}
-                </Dropdown.Item>
-              ))}
-            </Dropdown.Menu>
-          </Dropdown>
-        </div>
-      </nav>
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="sticky top-0 bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
+        <h1 className="text-lg font-semibold">Stock Charts</h1>
+        <select
+          className="bg-white text-gray-700 rounded px-2 py-1"
+          value={selectedPeriod}
+          onChange={(e) => setSelectedPeriod(e.target.value)}
+        >
+          {TIME_PERIODS.map((p) => (
+            <option key={p.label} value={p.label}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </header>
 
-      {/* Main Chart Container */}
-      <main className="flex-grow-1 d-flex justify-content-center align-items-center p-3">
+      {/* Chart */}
+      <main className="flex-grow flex items-center justify-center p-4">
         {loading ? (
-          <Spinner animation="border" />
+          <div className="text-center">Loading...</div>
         ) : error ? (
-          <Alert variant="danger">{error}</Alert>
+          <div className="text-red-500">{error}</div>
         ) : (
-          <div
-            ref={chartContainerRef}
-            className="w-100 rounded border shadow p-3 bg-white"
-            style={{ height: getChartHeight() }}
-          />
+          <div ref={chartContainerRef} className="w-full max-w-3xl h-full shadow-lg rounded-lg bg-white" />
         )}
       </main>
 
-      {/* Bottom Navbar */}
-      <footer className="navbar navbar-light bg-light">
-        <div className="container-fluid d-flex justify-content-between">
-          <Button onClick={handlePrevious} disabled={currentIndex === 0}>
-            Previous
-          </Button>
-          <span>
-            {currentIndex + 1} / {stockSymbols.length}
-          </span>
-          <Button onClick={handleNext} disabled={currentIndex === stockSymbols.length - 1}>
-            Next
-          </Button>
-        </div>
+      {/* Footer */}
+      <footer className="sticky bottom-0 bg-white py-4 px-6 flex justify-between items-center border-t">
+        <button onClick={handlePrevious} disabled={currentIndex === 0} className="text-blue-600">
+          Previous
+        </button>
+        <span>
+          {currentIndex + 1} / {stockSymbols.length}
+        </span>
+        <button onClick={handleNext} disabled={currentIndex === stockSymbols.length - 1} className="text-blue-600">
+          Next
+        </button>
       </footer>
     </div>
   );
