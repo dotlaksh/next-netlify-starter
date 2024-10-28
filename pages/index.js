@@ -13,6 +13,12 @@ const TIME_PERIODS = [
   { label: '1Y', days: 365 },
 ];
 
+const INTERVALS = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+];
+
 const StockChart = () => {
   const [stockSymbols, setStockSymbols] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -20,6 +26,7 @@ const StockChart = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('3M'); // Default value
+  const [selectedInterval, setSelectedInterval] = useState('daily'); // Default interval
   const [currentStock, setCurrentStock] = useState(null); // Track current stock info
 
   const chartContainerRef = useRef(null);
@@ -39,7 +46,7 @@ const StockChart = () => {
         complete: (results) => {
           const symbols = results.data.map((row) => row.Symbol).filter(Boolean);
           setStockSymbols(symbols);
-          if (symbols.length) fetchStockData(symbols[0], selectedPeriod);
+          if (symbols.length) fetchStockData(symbols[0], selectedPeriod, selectedInterval);
         },
         error: (err) => setError(`Failed to parse CSV: ${err.message}`),
       });
@@ -50,7 +57,48 @@ const StockChart = () => {
     }
   };
 
-  const fetchStockData = useCallback(async (symbol, period) => {
+  const aggregateData = (data, interval) => {
+    if (interval === 'daily') return data;
+
+    const aggregatedData = [];
+    const periodMap = {};
+
+    data.forEach((item) => {
+      const date = new Date(item.time * 1000);
+      let periodKey;
+
+      if (interval === 'weekly') {
+        const startOfWeek = new Date(date.setDate(date.getDate() - date.getDay()));
+        periodKey = startOfWeek.toISOString().slice(0, 10);
+      } else if (interval === 'monthly') {
+        periodKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      }
+
+      if (!periodMap[periodKey]) {
+        periodMap[periodKey] = {
+          time: item.time,
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close,
+          volume: item.volume,
+        };
+      } else {
+        periodMap[periodKey].high = Math.max(periodMap[periodKey].high, item.high);
+        periodMap[periodKey].low = Math.min(periodMap[periodKey].low, item.low);
+        periodMap[periodKey].close = item.close;
+        periodMap[periodKey].volume += item.volume;
+      }
+    });
+
+    for (const key in periodMap) {
+      aggregatedData.push(periodMap[key]);
+    }
+
+    return aggregatedData;
+  };
+
+  const fetchStockData = useCallback(async (symbol, period, interval) => {
     setLoading(true);
     try {
       const endDate = new Date();
@@ -70,11 +118,13 @@ const StockChart = () => {
         volume: parseFloat(item.volume),
       }));
 
-      setChartData(formattedData);
+      const adjustedData = aggregateData(formattedData, interval);
+
+      setChartData(adjustedData);
       setCurrentStock({
         name: symbol,
-        price: formattedData[formattedData.length - 1]?.close,
-        change: ((formattedData[formattedData.length - 1]?.close - formattedData[0]?.open) / formattedData[0]?.open) * 100,
+        price: adjustedData[adjustedData.length - 1]?.close,
+        change: ((adjustedData[adjustedData.length - 1]?.close - adjustedData[0]?.open) / adjustedData[0]?.open) * 100,
       });
     } catch (err) {
       setError('Failed to fetch stock data');
@@ -90,9 +140,9 @@ const StockChart = () => {
 
   useEffect(() => {
     if (stockSymbols.length > 0) {
-      fetchStockData(stockSymbols[currentIndex], selectedPeriod);
+      fetchStockData(stockSymbols[currentIndex], selectedPeriod, selectedInterval);
     }
-  }, [selectedPeriod, currentIndex]); // Update on period or index change
+  }, [selectedPeriod, selectedInterval, currentIndex]); // Update on period, interval, or index change
 
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
@@ -123,9 +173,11 @@ const StockChart = () => {
     });
     candleSeries.setData(chartData);
 
+    // Volume Series on a separate pane
     const volumeSeries = chart.addHistogramSeries({
+      color: '#26a69a', // Default color
       priceFormat: { type: 'volume' },
-      priceScaleId: '', // Separate volume pane
+      priceScaleId: '', // Empty string ensures it creates a new pane
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
@@ -163,17 +215,30 @@ const StockChart = () => {
       {/* Header */}
       <header className="sticky top-0 bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
         <h1 className="text-lg font-semibold">Stock Charts</h1>
-        <select
-          className="bg-white text-gray-700 rounded px-2 py-1"
-          value={selectedPeriod}
-          onChange={(e) => setSelectedPeriod(e.target.value)}
-        >
-          {TIME_PERIODS.map((p) => (
-            <option key={p.label} value={p.label}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center">
+          <select
+            className="bg-white text-gray-700 rounded px-2 py-1 mr-2"
+            value={selectedPeriod}
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+          >
+            {TIME_PERIODS.map((p) => (
+              <option key={p.label} value={p.label}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="bg-white text-gray-700 rounded px-2 py-1"
+            value={selectedInterval}
+            onChange={(e) => setSelectedInterval(e.target.value)}
+          >
+            {INTERVALS.map((interval) => (
+              <option key={interval.value} value={interval.value}>
+                {interval.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </header>
 
       {/* Stock Info */}
