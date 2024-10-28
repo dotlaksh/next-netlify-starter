@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import Papa from 'papaparse';
 import axios from 'axios';
-import { Dropdown, Button, Spinner, Alert, Card, Navbar, Container, Row, Col } from 'react-bootstrap';
+import { Navbar, Container, Row, Col, Button, Dropdown, Spinner, Card, Alert } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const TIME_PERIODS = [
@@ -12,15 +12,6 @@ const TIME_PERIODS = [
   { label: '6M', days: 180 },
   { label: '1Y', days: 365 },
 ];
-
-const ChartLoadingPlaceholder = () => (
-  <div className="w-100 h-100 d-flex justify-content-center align-items-center">
-    <div className="text-center">
-      <Spinner animation="border" role="status" variant="primary" />
-      <div className="mt-2">Loading chart data...</div>
-    </div>
-  </div>
-);
 
 const StockChart = () => {
   const [stockSymbols, setStockSymbols] = useState([]);
@@ -35,8 +26,6 @@ const StockChart = () => {
   const chartInstanceRef = useRef(null);
   const resizeObserverRef = useRef(null);
 
-  const getChartHeight = useCallback(() => chartContainerRef.current?.clientHeight || 400, []);
-
   useEffect(() => {
     const loadCSV = async () => {
       try {
@@ -46,7 +35,7 @@ const StockChart = () => {
           header: true,
           skipEmptyLines: true,
           complete: (results) => {
-            const symbols = results.data.map(row => row.Symbol).filter(Boolean);
+            const symbols = results.data.map((row) => row.Symbol).filter(Boolean);
             setStockSymbols(symbols);
             if (symbols.length) fetchStockData(symbols[0], selectedPeriod);
           },
@@ -70,20 +59,19 @@ const StockChart = () => {
   }, [selectedPeriod]);
 
   const fetchStockData = useCallback(async (symbol, period) => {
-    if (!symbol) return;
     setLoading(true);
     setError(null);
 
     try {
       const endDate = new Date();
       const startDate = new Date();
-      startDate.setDate(endDate.getDate() - TIME_PERIODS.find(t => t.label === period)?.days || 90);
+      startDate.setDate(endDate.getDate() - TIME_PERIODS.find((t) => t.label === period)?.days || 90);
 
       const response = await axios.get('/api/stockData', {
         params: { symbol, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       });
 
-      const data = response.data.map(item => ({
+      const data = response.data.map((item) => ({
         time: new Date(item.time).getTime() / 1000,
         open: item.open,
         high: item.high,
@@ -91,18 +79,13 @@ const StockChart = () => {
         close: item.close,
         volume: item.volume,
       }));
+
       setChartData(data);
-
-      const last = data[data.length - 1];
-      const prev = data[data.length - 2];
-      const change = (((last.close - prev.close) / prev.close) * 100).toFixed(2);
-
       setCurrentStats({
-        current: last.close.toFixed(2),
-        change,
-        high: last.high.toFixed(2),
-        low: last.low.toFixed(2),
-        volume: `${(last.volume / 1_000_000).toFixed(2)}M`,
+        current: data[data.length - 1].close.toFixed(2),
+        high: data[data.length - 1].high.toFixed(2),
+        low: data[data.length - 1].low.toFixed(2),
+        volume: `${(data[data.length - 1].volume / 1_000_000).toFixed(2)}M`,
       });
     } catch (error) {
       setError('Failed to fetch stock data.');
@@ -116,18 +99,18 @@ const StockChart = () => {
 
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: getChartHeight(),
-      layout: { backgroundColor: '#fff', textColor: '#000' },
+      height: 400,
+      layout: { backgroundColor: '#ffffff', textColor: '#000' },
       grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
       crosshair: { mode: CrosshairMode.Normal },
       timeScale: { timeVisible: true },
     });
 
     const series = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderUpColor: '#26a69a',
-      borderDownColor: '#ef5350',
+      upColor: '#4caf50',
+      downColor: '#f44336',
+      borderUpColor: '#4caf50',
+      borderDownColor: '#f44336',
     });
 
     series.setData(chartData);
@@ -142,7 +125,7 @@ const StockChart = () => {
       resizeObserverRef.current.disconnect();
       chart.remove();
     };
-  }, [chartData, getChartHeight]);
+  }, [chartData]);
 
   const handlePrevious = () => {
     if (currentIndex > 0) {
@@ -160,60 +143,55 @@ const StockChart = () => {
 
   return (
     <div className="d-flex flex-column vh-100">
-      <Navbar bg="primary" variant="dark">
+      {/* Top Navbar */}
+      <Navbar bg="dark" variant="dark" className="shadow-sm">
         <Container>
           <Navbar.Brand>Stock Charts</Navbar.Brand>
         </Container>
       </Navbar>
 
-      <Container className="flex-grow-1 my-3">
-        <Row>
-          <Col className="d-flex justify-content-center mb-3">
-            <Dropdown>
-              <Dropdown.Toggle variant="outline-primary">{selectedPeriod}</Dropdown.Toggle>
-              <Dropdown.Menu>
-                {TIME_PERIODS.map(period => (
-                  <Dropdown.Item
-                    key={period.label}
-                    onClick={() => setSelectedPeriod(period.label)}
-                  >
-                    {period.label}
-                  </Dropdown.Item>
-                ))}
-              </Dropdown.Menu>
-            </Dropdown>
-          </Col>
-        </Row>
-
+      {/* Chart Container */}
+      <Container className="my-4 flex-grow-1">
         <Card className="shadow-sm">
           <Card.Body>
-            <div ref={chartContainerRef} className="position-relative" style={{ height: '400px' }}>
-              {loading && <ChartLoadingPlaceholder />}
+            <div
+              ref={chartContainerRef}
+              className="position-relative"
+              style={{ height: '400px' }}
+            >
+              {loading && (
+                <div className="d-flex justify-content-center align-items-center h-100">
+                  <Spinner animation="border" role="status" variant="primary" />
+                </div>
+              )}
               {error && <Alert variant="danger">{error}</Alert>}
             </div>
           </Card.Body>
         </Card>
       </Container>
 
-      <footer className="bg-light py-3 mt-auto">
-        <Container>
-          <Row>
-            <Col>
-              <Button onClick={handlePrevious} disabled={currentIndex === 0}>
-                Previous
-              </Button>
-            </Col>
-            <Col className="text-center">
-              {currentIndex + 1} / {stockSymbols.length}
-            </Col>
-            <Col className="text-end">
-              <Button onClick={handleNext} disabled={currentIndex === stockSymbols.length - 1}>
-                Next
-              </Button>
-            </Col>
-          </Row>
+      {/* Bottom Navbar for Pagination */}
+      <Navbar bg="light" className="shadow-sm">
+        <Container className="justify-content-between">
+          <Button
+            onClick={handlePrevious}
+            disabled={currentIndex === 0}
+            variant="outline-primary"
+          >
+            Previous
+          </Button>
+          <div>
+            {currentIndex + 1} / {stockSymbols.length}
+          </div>
+          <Button
+            onClick={handleNext}
+            disabled={currentIndex === stockSymbols.length - 1}
+            variant="outline-primary"
+          >
+            Next
+          </Button>
         </Container>
-      </footer>
+      </Navbar>
     </div>
   );
 };
