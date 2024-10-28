@@ -14,16 +14,16 @@ const TIME_PERIODS = [
 ];
 
 const StockChart = () => {
-  const [stockSymbols, setStockSymbols] = useState<string[]>([]);
+  const [stockSymbols, setStockSymbols] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('3M'); // Default value
-  const [currentStock, setCurrentStock] = useState<any>(null); // Track current stock info
+  const [currentStock, setCurrentStock] = useState(null); // Track current stock info
 
-  const chartContainerRef = useRef<HTMLDivElement | null>(null);
-  const chartInstanceRef = useRef<any>(null);
+  const chartContainerRef = useRef(null);
+  const chartInstanceRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
     return window.innerWidth < 768 ? 400 : 600; // Increased height
@@ -50,7 +50,7 @@ const StockChart = () => {
     }
   };
 
-  const fetchStockData = useCallback(async (symbol: string, period: string) => {
+  const fetchStockData = useCallback(async (symbol, period) => {
     setLoading(true);
     try {
       const endDate = new Date();
@@ -61,7 +61,7 @@ const StockChart = () => {
         params: { symbol, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       });
 
-      const formattedData = data.map((item: any) => ({
+      const formattedData = data.map((item) => ({
         time: new Date(item.time).getTime() / 1000,
         open: parseFloat(item.open),
         high: parseFloat(item.high),
