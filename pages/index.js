@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
-import nifty50Data from '/public/data/nifty50.json';
-import niftyNext50Data from '/public/data/niftyNext50.json';
-import midcap150Data from '/public/data/midcap150.json';
-import smallcap250Data from '/public/data/smallcap250.json';
-import microCap250Data from '/public/data/microCap250.json';
+import nifty50Data from '/public/nifty50.json';
+import niftyNext50Data from '/public/niftyNext50.json';
+import midcap150Data from '/public/midcap150.json';
+import smallcap250Data from '/public/smallcap250.json';
+import microCap250Data from '/public/microCap250.json';
 
 const TIME_PERIODS = [
   { label: 'YTD', days: 365, auto: 'ytd' },
