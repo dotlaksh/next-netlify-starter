@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import Papa from 'papaparse';
 import axios from 'axios';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import Dropdown from 'react-bootstrap/Dropdown';
+import Button from 'react-bootstrap/Button';
+import Spinner from 'react-bootstrap/Spinner';
+import Alert from 'react-bootstrap/Alert';
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 const TIME_PERIODS = [
   { label: '1W', days: 7 },
@@ -13,6 +15,18 @@ const TIME_PERIODS = [
   { label: '6M', days: 180 },
   { label: '1Y', days: 365 },
 ];
+
+// Create loading placeholder component
+const ChartLoadingPlaceholder = () => {
+  return (
+    <div className="w-100 h-100 d-flex justify-content-center align-items-center">
+      <div className="text-center">
+        <Spinner animation="border" role="status" variant="primary" />
+        <div className="mt-2">Loading chart data...</div>
+      </div>
+    </div>
+  );
+};
 
 const StockChart = () => {
   const [stockSymbols, setStockSymbols] = useState([]);
@@ -27,12 +41,12 @@ const StockChart = () => {
   const chartInstanceRef = useRef(null);
   const resizeObserverRef = useRef(null);
 
-  // Calculate chart height based on container height rather than window height
+  // Calculate chart height based on container height
   const getChartHeight = useCallback(() => {
     if (chartContainerRef.current) {
       return chartContainerRef.current.clientHeight;
     }
-    return 600; // Default fallback height
+    return 600;
   }, []);
 
   // Load CSV data
@@ -184,7 +198,6 @@ const StockChart = () => {
       chart.timeScale().fitContent();
       chartInstanceRef.current = chart;
 
-      // Set up resize observer
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect();
       }
@@ -203,86 +216,113 @@ const StockChart = () => {
       resizeObserverRef.current.observe(chartContainerRef.current);
     };
 
-    // Small delay to ensure container is properly mounted
     const timer = setTimeout(initChart, 0);
     return () => clearTimeout(timer);
   }, [chartData, getChartHeight]);
 
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      fetchStockData(stockSymbols[currentIndex - 1], selectedPeriod);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < stockSymbols.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      fetchStockData(stockSymbols[currentIndex + 1], selectedPeriod);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-screen">
-      <header className="h-16 bg-blue-600 text-white px-4">
-        <div className="h-full max-w-screen-2xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-bold">Stock Charts</h1>
-            <h2 className="text-lg">{stockSymbols[currentIndex]}</h2>
-            {currentStats && (
-              <div className="hidden md:flex items-center space-x-4 text-sm">
-                <span className="font-bold">₹{currentStats.current}</span>
-                <span className={currentStats.change >= 0 ? 'text-green-300' : 'text-red-300'}>
-                  {currentStats.change}%
-                </span>
-                <span>H: ₹{currentStats.high}</span>
-                <span>L: ₹{currentStats.low}</span>
-                <span>Vol: {currentStats.volume}</span>
+    <div className="d-flex flex-column vh-100">
+      {/* Header */}
+      <header className="bg-primary text-white py-3">
+        <div className="container-fluid">
+          <div className="row align-items-center">
+            <div className="col">
+              <div className="d-flex align-items-center">
+                <h1 className="h4 mb-0 me-3">Stock Charts</h1>
+                <h2 className="h5 mb-0 me-3">{stockSymbols[currentIndex]}</h2>
+                {currentStats && (
+                  <div className="d-none d-md-flex align-items-center">
+                    <span className="fw-bold me-3">₹{currentStats.current}</span>
+                    <span className={`me-3 ${currentStats.change >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {currentStats.change}%
+                    </span>
+                    <span className="me-3">H: ₹{currentStats.high}</span>
+                    <span className="me-3">L: ₹{currentStats.low}</span>
+                    <span>Vol: {currentStats.volume}</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+            <div className="col-auto">
+              <Dropdown>
+                <Dropdown.Toggle variant="light" id="time-period-dropdown">
+                  {selectedPeriod}
+                </Dropdown.Toggle>
+                <Dropdown.Menu>
+                  {TIME_PERIODS.map((period) => (
+                    <Dropdown.Item 
+                      key={period.label}
+                      onClick={() => {
+                        setSelectedPeriod(period.label);
+                        fetchStockData(stockSymbols[currentIndex], period.label);
+                      }}
+                    >
+                      {period.label}
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            </div>
           </div>
-          <Select 
-            value={selectedPeriod} 
-            onValueChange={(value) => {
-              setSelectedPeriod(value);
-              fetchStockData(stockSymbols[currentIndex], value);
-            }}
-          >
-            <SelectTrigger className="w-24 bg-white/10">
-              <SelectValue placeholder="Time Period" />
-            </SelectTrigger>
-            <SelectContent>
-              {TIME_PERIODS.map(period => (
-                <SelectItem key={period.label} value={period.label}>
-                  {period.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </header>
 
-      <main className="flex-1 relative">
+      {/* Main Content */}
+      <main className="flex-grow-1 position-relative">
         {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center">Loading...</div>
+          <ChartLoadingPlaceholder />
         ) : error ? (
-          <div className="absolute inset-0 flex items-center justify-center text-red-500">{error}</div>
+          <div className="h-100 d-flex align-items-center justify-content-center">
+            <Alert variant="danger">
+              <Alert.Heading>Error Loading Chart</Alert.Heading>
+              <p className="mb-0">{error}</p>
+            </Alert>
+          </div>
         ) : (
-          <div ref={chartContainerRef} className="absolute inset-0" />
+          <div ref={chartContainerRef} className="position-absolute top-0 start-0 w-100 h-100" />
         )}
       </main>
 
-      <footer className="h-16 bg-white shadow-md">
-        <div className="h-full max-w-screen-2xl mx-auto px-4 flex justify-between items-center">
-          <Button 
-            variant="outline"
-            disabled={currentIndex === 0} 
-            onClick={() => {
-              setCurrentIndex(prev => prev - 1);
-              fetchStockData(stockSymbols[currentIndex - 1], selectedPeriod);
-            }}
-          >
-            Previous
-          </Button>
-          <div>
-            {currentIndex + 1} / {stockSymbols.length}
+      {/* Footer */}
+      <footer className="bg-light border-top py-3">
+        <div className="container-fluid">
+          <div className="row align-items-center">
+            <div className="col">
+              <Button 
+                variant="outline-primary"
+                disabled={currentIndex === 0}
+                onClick={handlePrevious}
+              >
+                Previous
+              </Button>
+            </div>
+            <div className="col text-center">
+              {currentIndex + 1} / {stockSymbols.length}
+            </div>
+            <div className="col text-end">
+              <Button 
+                variant="outline-primary"
+                disabled={currentIndex === stockSymbols.length - 1}
+                onClick={handleNext}
+              >
+                Next
+              </Button>
+            </div>
           </div>
-          <Button 
-            variant="outline"
-            disabled={currentIndex === stockSymbols.length - 1} 
-            onClick={() => {
-              setCurrentIndex(prev => prev + 1);
-              fetchStockData(stockSymbols[currentIndex + 1], selectedPeriod);
-            }}
-          >
-            Next
-          </Button>
         </div>
       </footer>
     </div>
