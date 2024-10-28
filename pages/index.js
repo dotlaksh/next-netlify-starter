@@ -6,7 +6,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@components/ui/card';
 import { Button } from '@components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@components/ui/select';
 
-// Time period options
 const TIME_PERIODS = [
   { label: '1W', days: 7 },
   { label: '1M', days: 30 },
@@ -29,29 +28,18 @@ export default function Home() {
   const candlestickSeriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
 
-  // Load CSV data
   useEffect(() => {
     const loadCSV = async () => {
       try {
         const response = await fetch('/nifty50.csv');
-        if (!response.ok) throw new Error('Failed to load CSV file');
-        
         const text = await response.text();
         Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
-          transform: (value) => value.trim(),
           complete: (results) => {
-            const validData = results.data.filter(row => row.Symbol?.trim());
-            if (!validData.length) {
-              setError('No valid stock symbols found in CSV');
-              setLoading(false);
-              return;
-            }
-
-            const symbols = validData.map(row => row.Symbol.trim());
+            const symbols = results.data.map(row => row.Symbol).filter(Boolean);
             setStockSymbols(symbols);
-            if (symbols.length > 0) fetchStockData(symbols[0], selectedPeriod);
+            if (symbols.length) fetchStockData(symbols[0], selectedPeriod);
           },
           error: (error) => {
             setError(`Failed to parse CSV file: ${error.message}`);
@@ -67,7 +55,6 @@ export default function Home() {
     loadCSV();
   }, []);
 
-  // Fetch stock data
   const fetchStockData = useCallback(async (symbol, period) => {
     setLoading(true);
     setError(null);
@@ -94,7 +81,6 @@ export default function Home() {
         
         setChartData(formattedData);
         
-        // Calculate current statistics
         const lastItem = formattedData[formattedData.length - 1];
         const prevItem = formattedData[formattedData.length - 2];
         const change = ((lastItem.close - prevItem.close) / prevItem.close * 100).toFixed(2);
@@ -116,7 +102,6 @@ export default function Home() {
     }
   }, []);
 
-  // Initialize and update chart
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
 
@@ -127,17 +112,9 @@ export default function Home() {
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: chartContainerRef.current.clientHeight,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-      },
+      layout: { background: { color: '#ffffff' }, textColor: '#333' },
+      grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+      crosshair: { mode: CrosshairMode.Normal },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
@@ -146,7 +123,6 @@ export default function Home() {
       },
     });
 
-    // Candlestick series
     candlestickSeriesRef.current = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -155,18 +131,13 @@ export default function Home() {
       wickDownColor: '#ef5350',
     });
 
-    // Volume series in a separate pane
     volumeSeriesRef.current = chart.addHistogramSeries({
       color: '#26a69a',
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
+      scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    // Set data
     candlestickSeriesRef.current.setData(chartData);
     volumeSeriesRef.current.setData(
       chartData.map(item => ({
@@ -179,7 +150,6 @@ export default function Home() {
     chart.timeScale().fitContent();
     chartInstanceRef.current = chart;
 
-    // Resize handler
     const handleResize = () => {
       chart.applyOptions({
         width: chartContainerRef.current.clientWidth,
@@ -194,7 +164,6 @@ export default function Home() {
     };
   }, [chartData]);
 
-  // Navigation handlers
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
@@ -215,26 +184,24 @@ export default function Home() {
       <header className="fixed top-0 left-0 right-0 bg-blue-600 text-white px-4 py-2 shadow-lg z-10">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <h1 className="text-xl font-bold">Stock Charts</h1>
-          <div className="flex items-center space-x-4">
-            <Select 
-              value={selectedPeriod} 
-              onValueChange={(value) => {
-                setSelectedPeriod(value);
-                fetchStockData(stockSymbols[currentIndex], value);
-              }}
-            >
-              <SelectTrigger className="w-24 bg-white/10">
-                <SelectValue placeholder="Time Period" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_PERIODS.map(period => (
-                  <SelectItem key={period.label} value={period.label}>
-                    {period.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select 
+            value={selectedPeriod} 
+            onValueChange={(value) => {
+              setSelectedPeriod(value);
+              fetchStockData(stockSymbols[currentIndex], value);
+            }}
+          >
+            <SelectTrigger className="w-24 bg-white/10">
+              <SelectValue placeholder="Time Period" />
+            </SelectTrigger>
+            <SelectContent>
+              {TIME_PERIODS.map(period => (
+                <SelectItem key={period.label} value={period.label}>
+                  {period.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </header>
 
@@ -261,7 +228,7 @@ export default function Home() {
             ) : error ? (
               <div className="text-red-500 text-center">{error}</div>
             ) : (
-              <div ref={chartContainerRef} className="w-full h-[500px]"></div>
+              <div ref={chartContainerRef} className="w-full h-full"></div>
             )}
           </CardContent>
         </Card>
