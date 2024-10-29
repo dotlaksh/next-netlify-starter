@@ -45,7 +45,7 @@ const StockChart = () => {
   const chartInstanceRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
-    return window.innerWidth < 768 ? 300 : 400;
+    return window.innerWidth < 768 ? 500 : 800;
   }, []);
 
   // Initialize stocks when index is selected
@@ -231,8 +231,8 @@ const StockChart = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <header className="sticky top-0 bg-blue-600 text-white py-3 px-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold">Stock Charts</h1>
+      <header className="sticky top-0 bg-gray-600 text-white py-3 px-4 flex justify-between items-center">
+        <h1 className="text-lg font-semibold">dotCharts</h1>
         <select
           className="bg-white text-gray-700 rounded px-2 py-1 text-sm"
           value={selectedIndexId}
