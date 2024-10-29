@@ -1,8 +1,7 @@
-"use client";
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import axios from 'axios';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import nifty50Data from '/public/nifty50.json';
 import niftyNext50Data from '/public/niftynext50.json';
 import midcap150Data from '/public/midcap150.json';
@@ -23,7 +22,7 @@ const INTERVALS = [
   { label: 'Monthly', value: 'monthly', autoTimeframe: '5Y' },
 ];
 
-const StockChart = () => {
+const StockChartCarousel = () => {
   const [indexData] = useState([
     { label: 'Nifty 50', data: nifty50Data },
     { label: 'Nifty Next 50', data: niftyNext50Data },
@@ -34,21 +33,22 @@ const StockChart = () => {
   const [selectedIndexId, setSelectedIndexId] = useState(0);
   const [currentStockIndex, setCurrentStockIndex] = useState(0);
   const [stocks, setStocks] = useState([]);
-  const [chartData, setChartData] = useState([]);
+  const [chartsData, setChartsData] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('YTD');
   const [selectedInterval, setSelectedInterval] = useState('daily');
   const [currentStock, setCurrentStock] = useState(null);
+  const [transition, setTransition] = useState(false);
 
   const chartContainerRef = useRef(null);
-  const chartInstanceRef = useRef(null);
+  const chartInstancesRef = useRef({});
+  const carouselRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
     return window.innerWidth < 768 ? 500 : 800;
   }, []);
 
-  // Initialize stocks when index is selected
   useEffect(() => {
     const selectedIndex = indexData[selectedIndexId];
     const stocksList = selectedIndex.data.map(item => ({
@@ -58,58 +58,8 @@ const StockChart = () => {
     }));
     setStocks(stocksList);
     setCurrentStockIndex(0);
+    setChartsData({});
   }, [selectedIndexId, indexData]);
-
-  const fetchStockData = useCallback(async () => {
-    if (!stocks.length) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const currentStock = stocks[currentStockIndex];
-      const endDate = new Date();
-      const startDate = new Date();
-      const period = TIME_PERIODS.find(p => p.label === selectedPeriod);
-      startDate.setDate(endDate.getDate() - (period?.days || 365));
-
-      const response = await axios.get('/api/stockData', {
-        params: {
-          symbol: currentStock.symbol,
-          startDate: startDate.toISOString().split('T')[0],
-          endDate: endDate.toISOString().split('T')[0]
-        }
-      });
-
-      const formattedData = response.data.map(item => ({
-        time: new Date(item.time).getTime() / 1000,
-        open: item.open,
-        high: item.high,
-        low: item.low,
-        close: item.close,
-        volume: item.volume
-      }));
-
-      const adjustedData = aggregateData(formattedData, selectedInterval);
-      
-      setChartData(adjustedData);
-      setCurrentStock({
-        name: currentStock.name,
-        symbol: currentStock.symbol,
-        industry: currentStock.industry,
-        price: adjustedData[adjustedData.length - 1]?.close,
-        change: ((adjustedData[adjustedData.length - 1]?.close - adjustedData[0]?.open) / adjustedData[0]?.open) * 100,
-      });
-    } catch (err) {
-      setError(err.response?.data?.details || 'Failed to fetch stock data');
-    } finally {
-      setLoading(false);
-    }
-  }, [stocks, currentStockIndex, selectedPeriod, selectedInterval]);
-
-  useEffect(() => {
-    fetchStockData();
-  }, [fetchStockData]);
 
   const aggregateData = (data, interval) => {
     if (interval === 'daily') return data;
@@ -148,29 +98,64 @@ const StockChart = () => {
     return Object.values(periodMap).sort((a, b) => a.time - b.time);
   };
 
-  useEffect(() => {
-    if (!chartContainerRef.current || !chartData.length) return;
+  const fetchStockData = useCallback(async (stockIndex) => {
+    if (!stocks.length) return;
+    
+    const stock = stocks[stockIndex];
+    const cacheKey = `${stock.symbol}-${selectedPeriod}-${selectedInterval}`;
+    
+    if (chartsData[cacheKey]) {
+      return chartsData[cacheKey];
+    }
+    
+    try {
+      const endDate = new Date();
+      const startDate = new Date();
+      const period = TIME_PERIODS.find(p => p.label === selectedPeriod);
+      startDate.setDate(endDate.getDate() - (period?.days || 365));
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
+      const response = await axios.get('/api/stockData', {
+        params: {
+          symbol: stock.symbol,
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0]
+        }
+      });
+
+      const formattedData = response.data.map(item => ({
+        time: new Date(item.time).getTime() / 1000,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+        volume: item.volume
+      }));
+
+      const adjustedData = aggregateData(formattedData, selectedInterval);
+      
+      setChartsData(prev => ({
+        ...prev,
+        [cacheKey]: adjustedData
+      }));
+
+      return adjustedData;
+    } catch (err) {
+      setError(err.response?.data?.details || 'Failed to fetch stock data');
+      return null;
+    }
+  }, [stocks, selectedPeriod, selectedInterval, chartsData]);
+
+  const createChartInstance = useCallback((container, data, stockIndex) => {
+    if (!container || !data) return null;
+
+    const chart = createChart(container, {
+      width: container.clientWidth,
       height: getChartHeight(),
       layout: { 
         background: { type: 'solid', color: '#f8fafc' }, 
-        textColor: '#1f2937' 
+        textColor: '#1f2937'
       },
-      crosshair: { 
-        mode: CrosshairMode.Normal,
-        vertLine: {
-          labelBackgroundColor: '#1f2937'
-        },
-        horzLine: {
-          labelBackgroundColor: '#1f2937'
-        }
-      },
-      grid: {
-        vertLines: { color: '#e2e8f0' },
-        horzLines: { color: '#e2e8f0' }
-      },
+      crosshair: { mode: CrosshairMode.Normal },
       timeScale: {
         timeVisible: true,
         borderColor: '#cbd5e1',
@@ -178,21 +163,10 @@ const StockChart = () => {
         minBarSpacing: 5,
       },
       rightPriceScale: {
-        borderColor: '#cbd5e1',
-      }
-    });
-
-    // Create separate price scale for volume
-    chart.applyOptions({
-      rightPriceScale: {
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.3, // Leave space for volume chart
-        },
+        autoScale: true,
       },
     });
 
-    // Add candlestick series
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -202,114 +176,100 @@ const StockChart = () => {
       wickDownColor: '#ef5350',
     });
 
-    candlestickSeries.setData(chartData);
+    candlestickSeries.setData(data);
 
-    // Add volume series with separate price scale
     const volumeSeries = chart.addHistogramSeries({
       color: '#26a69a',
-      priceFormat: { 
-        type: 'volume',
-        precision: 0,
-        minMove: 1,
-      },
-      priceScaleId: 'volume', // Unique ID for volume price scale
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+      scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    // Configure volume price scale
-    chart.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.8, // Position volume at bottom 20% of the chart
-        bottom: 0.02,
-      },
-      drawTicks: false,
-      borderVisible: false,
-    });
-
-    // Format volume data
-    const volumeData = chartData.map(d => ({
+    volumeSeries.setData(data.map(d => ({
       time: d.time,
       value: d.volume,
       color: d.close >= d.open ? '#26a69a80' : '#ef535080',
-    }));
-
-    volumeSeries.setData(volumeData);
-
-    // Add basic legend
-    const container = chartContainerRef.current;
-    const legendDiv = document.createElement('div');
-    legendDiv.style.position = 'absolute';
-    legendDiv.style.left = '12px';
-    legendDiv.style.top = '12px';
-    legendDiv.style.zIndex = '1';
-    legendDiv.style.fontSize = '12px';
-    legendDiv.style.padding = '8px';
-    legendDiv.style.background = 'rgba(255, 255, 255, 0.8)';
-    legendDiv.style.borderRadius = '4px';
-    container.style.position = 'relative';
-    container.appendChild(legendDiv);
-
-    const updateLegend = () => {
-      const lastData = chartData[chartData.length - 1];
-      if (lastData) {
-        legendDiv.innerHTML = `
-          <div style="color: #1f2937">
-            <div>O: ${lastData.open.toFixed(2)}</div>
-            <div>H: ${lastData.high.toFixed(2)}</div>
-            <div>L: ${lastData.low.toFixed(2)}</div>
-            <div>C: ${lastData.close.toFixed(2)}</div>
-            <div>V: ${lastData.volume.toLocaleString()}</div>
-          </div>
-        `;
-      }
-    };
-
-    updateLegend();
-
-    // Subscribe to crosshair move to update legend
-    chart.subscribeCrosshairMove(param => {
-      if (param.time) {
-        const data = param.seriesData.get(candlestickSeries);
-        if (data) {
-          legendDiv.innerHTML = `
-            <div style="color: #1f2937">
-              <div>O: ${data.open.toFixed(2)}</div>
-              <div>H: ${data.high.toFixed(2)}</div>
-              <div>L: ${data.low.toFixed(2)}</div>
-              <div>C: ${data.close.toFixed(2)}</div>
-              <div>V: ${volumeData.find(d => d.time === param.time)?.value.toLocaleString() || ''}</div>
-            </div>
-          `;
-        }
-      } else {
-        updateLegend();
-      }
-    });
+    })));
 
     chart.timeScale().fitContent();
-    chartInstanceRef.current = chart;
+    return chart;
+  }, [getChartHeight]);
 
-    const handleResize = () => {
-      chart.applyOptions({
-        width: chartContainerRef.current.clientWidth,
-        height: getChartHeight(),
-      });
-    };
+  const updateCharts = useCallback(async () => {
+    if (!carouselRef.current) return;
 
-    window.addEventListener('resize', handleResize);
+    const visibleIndices = [
+      Math.max(0, currentStockIndex - 1),
+      currentStockIndex,
+      Math.min(stocks.length - 1, currentStockIndex + 1)
+    ];
 
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (container.contains(legendDiv)) {
-        container.removeChild(legendDiv);
+    setLoading(true);
+
+    for (const index of visibleIndices) {
+      const chartContainer = carouselRef.current.children[index];
+      if (!chartContainer) continue;
+
+      const data = await fetchStockData(index);
+      if (!data) continue;
+
+      if (chartInstancesRef.current[index]) {
+        chartInstancesRef.current[index].remove();
       }
-      chart.remove();
+
+      chartInstancesRef.current[index] = createChartInstance(chartContainer, data, index);
+
+      if (index === currentStockIndex) {
+        const stock = stocks[index];
+        setCurrentStock({
+          name: stock.name,
+          symbol: stock.symbol,
+          industry: stock.industry,
+          price: data[data.length - 1]?.close,
+          change: ((data[data.length - 1]?.close - data[0]?.open) / data[0]?.open) * 100,
+        });
+      }
+    }
+
+    setLoading(false);
+  }, [currentStockIndex, stocks, fetchStockData, createChartInstance]);
+
+  useEffect(() => {
+    updateCharts();
+    return () => {
+      Object.values(chartInstancesRef.current).forEach(chart => chart?.remove());
+      chartInstancesRef.current = {};
     };
-  }, [chartData, getChartHeight]);
+  }, [updateCharts]);
+
+  const handleIntervalChange = (newInterval) => {
+    const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
+    setSelectedInterval(newInterval);
+    if (autoTimeframe) {
+      setSelectedPeriod(autoTimeframe);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStockIndex > 0) {
+      setTransition(true);
+      setCurrentStockIndex(prev => prev - 1);
+      setTimeout(() => setTransition(false), 300);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentStockIndex < stocks.length - 1) {
+      setTransition(true);
+      setCurrentStockIndex(prev => prev + 1);
+      setTimeout(() => setTransition(false), 300);
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <header className="sticky top-0 bg-blue-600 text-white py-3 px-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold">Stock Charts</h1>
+      <header className="sticky top-0 bg-gray-600 text-white py-3 px-4 flex justify-between items-center z-10">
+        <h1 className="text-lg font-semibold">dotCharts</h1>
         <select
           className="bg-white text-gray-700 rounded px-2 py-1 text-sm"
           value={selectedIndexId}
@@ -339,38 +299,54 @@ const StockChart = () => {
         </div>
       )}
 
-      <main className="flex-grow p-4">
-        {loading ? (
-          <div className="flex items-center justify-center h-[700px]">
+      <main className="flex-grow relative overflow-hidden">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
             <div className="text-center">Loading...</div>
           </div>
-        ) : error ? (
-          <div className="flex items-center justify-center h-[700px]">
-            <div className="text-red-500">{error}</div>
-          </div>
+        )}
+        {error ? (
+          <div className="text-red-500 text-center p-4">{error}</div>
         ) : (
-          <div ref={chartContainerRef} className="w-full shadow-lg rounded-lg bg-white" />
+          <div className="relative h-full">
+            <div
+              ref={carouselRef}
+              className="flex transition-transform duration-300 ease-in-out h-full"
+              style={{
+                transform: `translateX(-${currentStockIndex * 100}%)`,
+              }}
+            >
+              {stocks.map((_, index) => (
+                <div
+                  key={index}
+                  className="w-full flex-shrink-0 p-4"
+                  style={{ height: getChartHeight() }}
+                />
+              ))}
+            </div>
+            <button
+              onClick={handlePrevious}
+              disabled={currentStockIndex === 0}
+              className="absolute left-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-full shadow-lg disabled:opacity-50 disabled:cursor-not-allowed z-20"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              onClick={handleNext}
+              disabled={currentStockIndex === stocks.length - 1}
+              className="absolute right-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-full shadow-lg disabled:opacity-50 disabled:cursor-not-allowed z-20"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </div>
         )}
       </main>
+
       <footer className="sticky bottom-0 bg-white py-3 px-4 flex justify-between items-center border-t">
         <div className="flex items-center gap-4">
-          <button
-            onClick={handlePrevious}
-            disabled={currentStockIndex === 0}
-            className="text-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
           <span className="text-sm">
             {currentStockIndex + 1} / {stocks.length}
           </span>
-          <button
-            onClick={handleNext}
-            disabled={currentStockIndex === stocks.length - 1}
-            className="text-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -401,4 +377,4 @@ const StockChart = () => {
   );
 };
 
-export default StockChart;
+export default StockChartCarousel;
