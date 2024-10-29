@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
 import nifty50Data from '/public/nifty50.json';
@@ -42,8 +40,15 @@ const StockChart = () => {
   const chartInstanceRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
-    return window.innerWidth < 768 ? 300 : 400; // Adjust the height based on screen size
+    return window.innerWidth < 768 ? 300 : 400;
   }, []);
+
+  useEffect(() => {
+    if (stockData.length > 0) {
+      const firstStockSymbol = stockData[0].data[0].symbol;
+      fetchStockData(firstStockSymbol, selectedPeriod, selectedInterval);
+    }
+  }, [stockData, selectedPeriod, selectedInterval, fetchStockData]);
 
   const fetchStockData = useCallback(async (symbol, period, interval) => {
     setLoading(true);
@@ -76,53 +81,6 @@ const StockChart = () => {
     }
   }, [stockData, currentIndex]);
 
-  useEffect(() => {
-    if (stockData.length > 0) {
-      fetchStockData(stockData[currentIndex].data[0].symbol, selectedPeriod, selectedInterval);
-    }
-  }, [selectedPeriod, selectedInterval, currentIndex, fetchStockData]);
-
-  const aggregateData = (data, interval) => {
-    if (interval === 'daily') return data;
-
-    const aggregatedData = [];
-    const periodMap = {};
-
-    data.forEach((item) => {
-      const date = new Date(item.time * 1000);
-      let periodKey;
-
-      if (interval === 'weekly') {
-        const startOfWeek = new Date(date.setDate(date.getDate() - date.getDay()));
-        periodKey = startOfWeek.toISOString().slice(0, 10);
-      } else if (interval === 'monthly') {
-        periodKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-      }
-
-      if (!periodMap[periodKey]) {
-        periodMap[periodKey] = {
-          time: item.time,
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close,
-          volume: item.volume,
-        };
-      } else {
-        periodMap[periodKey].high = Math.max(periodMap[periodKey].high, item.high);
-        periodMap[periodKey].low = Math.min(periodMap[periodKey].low, item.low);
-        periodMap[periodKey].close = item.close;
-        periodMap[periodKey].volume += item.volume;
-      }
-    });
-
-    for (const key in periodMap) {
-      aggregatedData.push(periodMap[key]);
-    }
-
-    return aggregatedData;
-  };
-
   const handleIntervalChange = (newInterval) => {
     const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
     setSelectedInterval(newInterval);
@@ -134,17 +92,23 @@ const StockChart = () => {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex((prev) => prev - 1);
+      const symbol = stockData[currentIndex - 1].data[0].symbol;
+      fetchStockData(symbol, selectedPeriod, selectedInterval);
     }
   };
 
   const handleNext = () => {
     if (currentIndex < stockData.length - 1) {
       setCurrentIndex((prev) => prev + 1);
+      const symbol = stockData[currentIndex + 1].data[0].symbol;
+      fetchStockData(symbol, selectedPeriod, selectedInterval);
     }
   };
 
   const handleDatasetChange = (index) => {
     setCurrentIndex(index);
+    const symbol = stockData[index].data[0].symbol;
+    fetchStockData(symbol, selectedPeriod, selectedInterval);
   };
 
   useEffect(() => {
