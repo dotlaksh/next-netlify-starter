@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, CrosshairMode } from 'lightweight-charts';
@@ -45,12 +45,46 @@ const StockChart = () => {
     return window.innerWidth < 768 ? 300 : 400;
   }, []);
 
-  useEffect(() => {
-    if (stockData.length > 0) {
-      const firstStockSymbol = stockData[0].data[0].symbol;
-      fetchStockData(firstStockSymbol, selectedPeriod, selectedInterval);
+  const aggregateData = (data, interval) => {
+    if (interval === 'daily') return data;
+
+    const aggregatedData = [];
+    const periodMap = {};
+
+    data.forEach((item) => {
+      const date = new Date(item.time * 1000);
+      let periodKey;
+
+      if (interval === 'weekly') {
+        const startOfWeek = new Date(date.setDate(date.getDate() - date.getDay()));
+        periodKey = startOfWeek.toISOString().slice(0, 10);
+      } else if (interval === 'monthly') {
+        periodKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      }
+
+      if (!periodMap[periodKey]) {
+        periodMap[periodKey] = {
+          time: item.time,
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close,
+          volume: item.volume,
+        };
+      } else {
+        periodMap[periodKey].high = Math.max(periodMap[periodKey].high, item.high);
+        periodMap[periodKey].low = Math.min(periodMap[periodKey].low, item.low);
+        periodMap[periodKey].close = item.close;
+        periodMap[periodKey].volume += item.volume;
+      }
+    });
+
+    for (const key in periodMap) {
+      aggregatedData.push(periodMap[key]);
     }
-  }, [stockData, selectedPeriod, selectedInterval, fetchStockData]);
+
+    return aggregatedData;
+  };
 
   const fetchStockData = useCallback(async (symbol, period, interval) => {
     setLoading(true);
@@ -83,35 +117,12 @@ const StockChart = () => {
     }
   }, [stockData, currentIndex]);
 
-  const handleIntervalChange = (newInterval) => {
-    const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
-    setSelectedInterval(newInterval);
-    if (autoTimeframe) {
-      setSelectedPeriod(autoTimeframe);
+  useEffect(() => {
+    if (stockData.length > 0) {
+      const firstStockSymbol = stockData[currentIndex].data[0].symbol;
+      fetchStockData(firstStockSymbol, selectedPeriod, selectedInterval);
     }
-  };
-
-  const handlePrevious = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-      const symbol = stockData[currentIndex - 1].data[0].symbol;
-      fetchStockData(symbol, selectedPeriod, selectedInterval);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentIndex < stockData.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-      const symbol = stockData[currentIndex + 1].data[0].symbol;
-      fetchStockData(symbol, selectedPeriod, selectedInterval);
-    }
-  };
-
-  const handleDatasetChange = (index) => {
-    setCurrentIndex(index);
-    const symbol = stockData[index].data[0].symbol;
-    fetchStockData(symbol, selectedPeriod, selectedInterval);
-  };
+  }, [currentIndex, selectedPeriod, selectedInterval, fetchStockData]);
 
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
@@ -124,15 +135,14 @@ const StockChart = () => {
       timeScale: {
         timeVisible: true,
         borderColor: '#cbd5e1',
-        rightOffset: 5, // Added right offset
-        minBarSpacing: 5, // Added minimum bar spacing
+        rightOffset: 5,
+        minBarSpacing: 5,
       },
       rightPriceScale: {
-        autoScale: true, // Ensure autoscaling
+        autoScale: true,
       },
     });
 
-    // Create main price chart
     const mainSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -143,10 +153,8 @@ const StockChart = () => {
       priceScaleId: 'right',
     });
 
-    // Set up the main chart data
     mainSeries.setData(chartData);
 
-    // Create volume series in a separate pane
     const volumeSeries = chart.addHistogramSeries({
       color: '#26a69a',
       priceFormat: {
@@ -159,16 +167,14 @@ const StockChart = () => {
       },
     });
 
-    // Configure the volume pane
     chart.priceScale('volume').applyOptions({
       scaleMargins: {
-        top: 0.7, // Start the volume chart 70% down from the top
-        bottom: 0, // Extend to the bottom
+        top: 0.7,
+        bottom: 0,
       },
-      height: 100, // Fixed height for volume pane
+      height: 100,
     });
 
-    // Set volume data with colors matching the candlesticks
     const volumeData = chartData.map((d) => ({
       time: d.time,
       value: d.volume,
@@ -176,14 +182,48 @@ const StockChart = () => {
     }));
 
     volumeSeries.setData(volumeData);
-
-    // Sync crosshair movement
     chart.timeScale().fitContent();
 
     chartInstanceRef.current = chart;
 
-    return () => chart.remove();
+    const handleResize = () => {
+      chart.applyOptions({
+        width: chartContainerRef.current.clientWidth,
+        height: getChartHeight(),
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
   }, [chartData, getChartHeight]);
+
+  const handleIntervalChange = (newInterval) => {
+    const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
+    setSelectedInterval(newInterval);
+    if (autoTimeframe) {
+      setSelectedPeriod(autoTimeframe);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < stockData.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleDatasetChange = (index) => {
+    setCurrentIndex(index);
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -225,7 +265,7 @@ const StockChart = () => {
         <button
           onClick={handlePrevious}
           disabled={currentIndex === 0}
-          className="text-blue-600 text-sm"
+          className="text-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
@@ -235,7 +275,7 @@ const StockChart = () => {
         <button
           onClick={handleNext}
           disabled={currentIndex === stockData.length - 1}
-          className="text-blue-600 text-sm"
+          className="text-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
         </button>
