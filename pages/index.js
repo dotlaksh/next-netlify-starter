@@ -23,14 +23,8 @@ const INTERVALS = [
 ];
 
 const StockChart = () => {
-  const [stockData, setStockData] = useState([
-    { label: 'Nifty 50', data: nifty50Data },
-    { label: 'Nifty Next 50', data: niftyNext50Data },
-    { label: 'Midcap 150', data: midcap150Data },
-    { label: 'Smallcap 250', data: smallcap250Data },
-    { label: 'MicroCap 250', data: microCap250Data },
-  ]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [currentStockIndex, setCurrentStockIndex] = useState(0);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,6 +34,14 @@ const StockChart = () => {
 
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
+
+  const indexData = [
+    { label: 'Nifty 50', data: nifty50Data },
+    { label: 'Nifty Next 50', data: niftyNext50Data },
+    { label: 'Midcap 150', data: midcap150Data },
+    { label: 'Smallcap 250', data: smallcap250Data },
+    { label: 'MicroCap 250', data: microCap250Data },
+  ];
 
   const getChartHeight = useCallback(() => {
     return window.innerWidth < 768 ? 300 : 400;
@@ -79,21 +81,18 @@ const StockChart = () => {
       }
     });
 
-    for (const key in periodMap) {
-      aggregatedData.push(periodMap[key]);
-    }
-
-    return aggregatedData;
+    return Object.values(periodMap).sort((a, b) => a.time - b.time);
   };
 
-  const fetchStockData = useCallback(async (symbol, period, interval) => {
+  const loadStockData = useCallback(() => {
     setLoading(true);
     try {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(endDate.getDate() - (TIME_PERIODS.find((t) => t.label === period)?.days || 90));
+      const currentIndexData = indexData[selectedIndex].data;
+      // Group data by date for the current stock
+      const stockSymbol = [...new Set(currentIndexData.map(item => item.symbol))][currentStockIndex];
+      const stockData = currentIndexData.filter(item => item.symbol === stockSymbol);
 
-      const formattedData = stockData[currentIndex].data.map((item) => ({
+      const formattedData = stockData.map((item) => ({
         time: new Date(item.date).getTime() / 1000,
         open: parseFloat(item.open),
         high: parseFloat(item.high),
@@ -102,27 +101,25 @@ const StockChart = () => {
         volume: parseFloat(item.volume),
       }));
 
-      const adjustedData = aggregateData(formattedData, interval);
-
+      const adjustedData = aggregateData(formattedData, selectedInterval);
+      
       setChartData(adjustedData);
       setCurrentStock({
-        name: symbol,
+        name: stockSymbol,
         price: adjustedData[adjustedData.length - 1]?.close,
         change: ((adjustedData[adjustedData.length - 1]?.close - adjustedData[0]?.open) / adjustedData[0]?.open) * 100,
       });
     } catch (err) {
-      setError('Failed to fetch stock data');
+      setError('Failed to load stock data');
+      console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [stockData, currentIndex]);
+  }, [selectedIndex, currentStockIndex, selectedInterval]);
 
   useEffect(() => {
-    if (stockData.length > 0) {
-      const firstStockSymbol = stockData[currentIndex].data[0].symbol;
-      fetchStockData(firstStockSymbol, selectedPeriod, selectedInterval);
-    }
-  }, [currentIndex, selectedPeriod, selectedInterval, fetchStockData]);
+    loadStockData();
+  }, [loadStockData]);
 
   useEffect(() => {
     if (!chartContainerRef.current || !chartData.length) return;
@@ -167,23 +164,13 @@ const StockChart = () => {
       },
     });
 
-    chart.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.7,
-        bottom: 0,
-      },
-      height: 100,
-    });
-
-    const volumeData = chartData.map((d) => ({
+    volumeSeries.setData(chartData.map((d) => ({
       time: d.time,
       value: d.volume,
       color: d.close >= d.open ? '#26a69a80' : '#ef535080',
-    }));
+    })));
 
-    volumeSeries.setData(volumeData);
     chart.timeScale().fitContent();
-
     chartInstanceRef.current = chart;
 
     const handleResize = () => {
@@ -210,19 +197,24 @@ const StockChart = () => {
   };
 
   const handlePrevious = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-    }
+    setCurrentStockIndex((prev) => {
+      if (prev > 0) return prev - 1;
+      return prev;
+    });
   };
 
   const handleNext = () => {
-    if (currentIndex < stockData.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    }
+    const totalStocks = new Set(indexData[selectedIndex].data.map(item => item.symbol)).size;
+    setCurrentStockIndex((prev) => {
+      if (prev < totalStocks - 1) return prev + 1;
+      return prev;
+    });
   };
 
-  const handleDatasetChange = (index) => {
-    setCurrentIndex(index);
+  const handleIndexChange = (event) => {
+    const newIndex = parseInt(event.target.value);
+    setSelectedIndex(newIndex);
+    setCurrentStockIndex(0); // Reset to first stock when index changes
   };
 
   return (
@@ -231,10 +223,10 @@ const StockChart = () => {
         <h1 className="text-lg font-semibold">Stock Charts</h1>
         <select
           className="bg-white text-gray-700 rounded px-2 py-1 text-sm"
-          value={currentIndex}
-          onChange={(e) => handleDatasetChange(parseInt(e.target.value))}
+          value={selectedIndex}
+          onChange={handleIndexChange}
         >
-          {stockData.map((item, index) => (
+          {indexData.map((item, index) => (
             <option key={index} value={index}>
               {item.label}
             </option>
@@ -264,17 +256,17 @@ const StockChart = () => {
       <footer className="sticky bottom-0 bg-white py-3 px-4 flex justify-between items-center border-t">
         <button
           onClick={handlePrevious}
-          disabled={currentIndex === 0}
+          disabled={currentStockIndex === 0}
           className="text-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
         <span className="text-sm">
-          {currentIndex + 1} / {stockData.length}
+          {currentStockIndex + 1} / {new Set(indexData[selectedIndex].data.map(item => item.symbol)).size}
         </span>
         <button
           onClick={handleNext}
-          disabled={currentIndex === stockData.length - 1}
+          disabled={currentStockIndex === new Set(indexData[selectedIndex].data.map(item => item.symbol)).size - 1}
           className="text-blue-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
