@@ -13,7 +13,7 @@ const TIME_PERIODS = [
   { label: '1Y', days: 365 },
   { label: '2Y', days: 730 },
   { label: '5Y', days: 1825 },
-  { label: 'Max', days: 3650 }, // Approx. 10 years for max
+  { label: 'Max', days: 3650 },
 ];
 
 const INTERVALS = [
@@ -34,15 +34,15 @@ const StockChart = () => {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('YTD'); // Default value adjusted
-  const [selectedInterval, setSelectedInterval] = useState('daily'); // Default interval
-  const [currentStock, setCurrentStock] = useState(null); // Track current stock info
+  const [selectedPeriod, setSelectedPeriod] = useState('YTD');
+  const [selectedInterval, setSelectedInterval] = useState('daily');
+  const [currentStock, setCurrentStock] = useState(null);
 
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
 
   const getChartHeight = useCallback(() => {
-    return window.innerWidth < 768 ? 400 : 600; // Increased height
+    return window.innerWidth < 768 ? 300 : 400; // Adjust the height based on screen size
   }, []);
 
   const fetchStockData = useCallback(async (symbol, period, interval) => {
@@ -221,10 +221,10 @@ const StockChart = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <header className="sticky top-0 bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
+      <header className="sticky top-0 bg-blue-600 text-white py-3 px-4 flex justify-between items-center">
         <h1 className="text-lg font-semibold">Stock Charts</h1>
         <select
-          className="bg-white text-gray-700 rounded px-2 py-1"
+          className="bg-white text-gray-700 rounded px-2 py-1 text-sm"
           value={currentIndex}
           onChange={(e) => handleDatasetChange(parseInt(e.target.value))}
         >
@@ -238,8 +238,8 @@ const StockChart = () => {
 
       {currentStock && (
         <div className="flex justify-center items-center py-2 bg-white shadow-sm">
-          <span className="text-lg font-bold mr-4">{currentStock.name}</span>
-          <span className="text-lg font-semibold">
+          <span className="text-sm font-bold mr-2">{currentStock.name}</span>
+          <span className="text-sm font-semibold">
             {currentStock.price.toFixed(2)} ({currentStock.change.toFixed(2)}%)
           </span>
         </div>
@@ -251,23 +251,31 @@ const StockChart = () => {
         ) : error ? (
           <div className="text-red-500">{error}</div>
         ) : (
-          <div ref={chartContainerRef} className="w-full max-w-3xl h-full shadow-lg rounded-lg bg-white" />
+          <div ref={chartContainerRef} className="w-full h-full shadow-lg rounded-lg bg-white" />
         )}
       </main>
 
-      <footer className="sticky bottom-0 bg-white py-4 px-6 flex justify-between items-center border-t">
-        <button onClick={handlePrevious} disabled={currentIndex === 0} className="text-blue-600">
+      <footer className="sticky bottom-0 bg-white py-3 px-4 flex justify-between items-center border-t">
+        <button
+          onClick={handlePrevious}
+          disabled={currentIndex === 0}
+          className="text-blue-600 text-sm"
+        >
           Previous
         </button>
-        <span>
+        <span className="text-sm">
           {currentIndex + 1} / {stockData.length}
         </span>
-        <button onClick={handleNext} disabled={currentIndex === stockData.length - 1} className="text-blue-600">
+        <button
+          onClick={handleNext}
+          disabled={currentIndex === stockData.length - 1}
+          className="text-blue-600 text-sm"
+        >
           Next
         </button>
         <div className="flex items-center">
           <select
-            className="bg-white text-gray-700 rounded px-2 py-1 mr-2"
+            className="bg-white text-gray-700 rounded px-2 py-1 mr-2 text-sm"
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value)}
           >
@@ -278,7 +286,7 @@ const StockChart = () => {
             ))}
           </select>
           <select
-            className="bg-white text-gray-700 rounded px-2 py-1"
+            className="bg-white text-gray-700 rounded px-2 py-1 text-sm"
             value={selectedInterval}
             onChange={(e) => handleIntervalChange(e.target.value)}
           >
