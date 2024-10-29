@@ -154,8 +154,23 @@ const StockChart = () => {
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: getChartHeight(),
-      layout: { background: { type: 'solid', color: '#f8fafc' }, textColor: '#1f2937' },
-      crosshair: { mode: CrosshairMode.Normal },
+      layout: { 
+        background: { type: 'solid', color: '#f8fafc' }, 
+        textColor: '#1f2937' 
+      },
+      crosshair: { 
+        mode: CrosshairMode.Normal,
+        vertLine: {
+          labelBackgroundColor: '#1f2937'
+        },
+        horzLine: {
+          labelBackgroundColor: '#1f2937'
+        }
+      },
+      grid: {
+        vertLines: { color: '#e2e8f0' },
+        horzLines: { color: '#e2e8f0' }
+      },
       timeScale: {
         timeVisible: true,
         borderColor: '#cbd5e1',
@@ -163,10 +178,21 @@ const StockChart = () => {
         minBarSpacing: 5,
       },
       rightPriceScale: {
-        autoScale: true,
+        borderColor: '#cbd5e1',
+      }
+    });
+
+    // Create separate price scale for volume
+    chart.applyOptions({
+      rightPriceScale: {
+        scaleMargins: {
+          top: 0.1,
+          bottom: 0.3, // Leave space for volume chart
+        },
       },
     });
 
+    // Add candlestick series
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -178,18 +204,86 @@ const StockChart = () => {
 
     candlestickSeries.setData(chartData);
 
+    // Add volume series with separate price scale
     const volumeSeries = chart.addHistogramSeries({
       color: '#26a69a',
-      priceFormat: { type: 'volume' },
-      priceScaleId: 'volume',
-      scaleMargins: { top: 0.8, bottom: 0 },
+      priceFormat: { 
+        type: 'volume',
+        precision: 0,
+        minMove: 1,
+      },
+      priceScaleId: 'volume', // Unique ID for volume price scale
     });
 
-    volumeSeries.setData(chartData.map(d => ({
+    // Configure volume price scale
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8, // Position volume at bottom 20% of the chart
+        bottom: 0.02,
+      },
+      drawTicks: false,
+      borderVisible: false,
+    });
+
+    // Format volume data
+    const volumeData = chartData.map(d => ({
       time: d.time,
       value: d.volume,
       color: d.close >= d.open ? '#26a69a80' : '#ef535080',
-    })));
+    }));
+
+    volumeSeries.setData(volumeData);
+
+    // Add basic legend
+    const container = chartContainerRef.current;
+    const legendDiv = document.createElement('div');
+    legendDiv.style.position = 'absolute';
+    legendDiv.style.left = '12px';
+    legendDiv.style.top = '12px';
+    legendDiv.style.zIndex = '1';
+    legendDiv.style.fontSize = '12px';
+    legendDiv.style.padding = '8px';
+    legendDiv.style.background = 'rgba(255, 255, 255, 0.8)';
+    legendDiv.style.borderRadius = '4px';
+    container.style.position = 'relative';
+    container.appendChild(legendDiv);
+
+    const updateLegend = () => {
+      const lastData = chartData[chartData.length - 1];
+      if (lastData) {
+        legendDiv.innerHTML = `
+          <div style="color: #1f2937">
+            <div>O: ${lastData.open.toFixed(2)}</div>
+            <div>H: ${lastData.high.toFixed(2)}</div>
+            <div>L: ${lastData.low.toFixed(2)}</div>
+            <div>C: ${lastData.close.toFixed(2)}</div>
+            <div>V: ${lastData.volume.toLocaleString()}</div>
+          </div>
+        `;
+      }
+    };
+
+    updateLegend();
+
+    // Subscribe to crosshair move to update legend
+    chart.subscribeCrosshairMove(param => {
+      if (param.time) {
+        const data = param.seriesData.get(candlestickSeries);
+        if (data) {
+          legendDiv.innerHTML = `
+            <div style="color: #1f2937">
+              <div>O: ${data.open.toFixed(2)}</div>
+              <div>H: ${data.high.toFixed(2)}</div>
+              <div>L: ${data.low.toFixed(2)}</div>
+              <div>C: ${data.close.toFixed(2)}</div>
+              <div>V: ${volumeData.find(d => d.time === param.time)?.value.toLocaleString() || ''}</div>
+            </div>
+          `;
+        }
+      } else {
+        updateLegend();
+      }
+    });
 
     chart.timeScale().fitContent();
     chartInstanceRef.current = chart;
@@ -205,34 +299,17 @@ const StockChart = () => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (container.contains(legendDiv)) {
+        container.removeChild(legendDiv);
+      }
       chart.remove();
     };
   }, [chartData, getChartHeight]);
 
-  const handleIntervalChange = (newInterval) => {
-    const autoTimeframe = INTERVALS.find((i) => i.value === newInterval)?.autoTimeframe;
-    setSelectedInterval(newInterval);
-    if (autoTimeframe) {
-      setSelectedPeriod(autoTimeframe);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentStockIndex > 0) {
-      setCurrentStockIndex(prev => prev - 1);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentStockIndex < stocks.length - 1) {
-      setCurrentStockIndex(prev => prev + 1);
-    }
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <header className="sticky top-0 bg-gray-600 text-white py-3 px-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold">dotCharts</h1>
+      <header className="sticky top-0 bg-blue-600 text-white py-3 px-4 flex justify-between items-center">
+        <h1 className="text-lg font-semibold">Stock Charts</h1>
         <select
           className="bg-white text-gray-700 rounded px-2 py-1 text-sm"
           value={selectedIndexId}
@@ -262,16 +339,19 @@ const StockChart = () => {
         </div>
       )}
 
-      <main className="flex-grow flex items-center justify-center p-4">
+      <main className="flex-grow p-4">
         {loading ? (
-          <div className="text-center">Loading...</div>
+          <div className="flex items-center justify-center h-[700px]">
+            <div className="text-center">Loading...</div>
+          </div>
         ) : error ? (
-          <div className="text-red-500">{error}</div>
+          <div className="flex items-center justify-center h-[700px]">
+            <div className="text-red-500">{error}</div>
+          </div>
         ) : (
-          <div ref={chartContainerRef} className="w-full h-full shadow-lg rounded-lg bg-white" />
+          <div ref={chartContainerRef} className="w-full shadow-lg rounded-lg bg-white" />
         )}
       </main>
-
       <footer className="sticky bottom-0 bg-white py-3 px-4 flex justify-between items-center border-t">
         <div className="flex items-center gap-4">
           <button
